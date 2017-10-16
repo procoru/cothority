@@ -1,9 +1,13 @@
 package skipchain
 
-import "gopkg.in/dedis/onet.v1/network"
+import (
+	"gopkg.in/dedis/onet.v1"
+	"gopkg.in/dedis/onet.v1/crypto"
+	"gopkg.in/dedis/onet.v1/network"
+)
 
 func init() {
-	for _, m := range []interface{}{
+	network.RegisterMessages(
 		// - API calls
 		// Store new skipblock
 		&StoreSkipBlock{},
@@ -23,16 +27,19 @@ func init() {
 		&ForwardSignature{},
 		// Request updated block
 		&GetBlock{},
-		// Reply with updated block
+		// ERReply with updated block
 		&GetBlockReply{},
 		// - Data structures
 		&SkipBlockFix{},
 		&SkipBlock{},
 		// Own service
 		&Service{},
-	} {
-		network.RegisterMessage(m)
-	}
+		// - Protocol messages
+		&ProtoExtendSignature{},
+		&ProtoExtendRosterReply{},
+		&ProtoGetUpdate{},
+		&ProtoBlockReply{},
+	)
 }
 
 // This file holds all messages that can be sent to the SkipChain,
@@ -43,9 +50,12 @@ func init() {
 // StoreSkipBlock - Requests a new skipblock to be appended to
 // the given SkipBlock. If the given SkipBlock has Index 0 (which
 // is invalid), a new SkipChain will be created.
+// if AuthSkipchain == true, then the signature has to be a valid
+// Schnorr signature on the hash of the NewBlock.
 type StoreSkipBlock struct {
-	LatestID SkipBlockID
-	NewBlock *SkipBlock
+	LatestID  SkipBlockID
+	NewBlock  *SkipBlock
+	Signature *crypto.SchnorrSig
 }
 
 // StoreSkipBlockReply - returns the signed SkipBlock with updated backlinks
@@ -128,4 +138,60 @@ type PropagateSkipBlock struct {
 // GetBlockReply returns the requested block.
 type GetBlockReply struct {
 	SkipBlock *SkipBlock
+}
+
+// Protocol messages
+
+const Name = "sccomm"
+
+// ProtoExtendSignature can be used as proof that a node accepted to be included
+// in a new roster.
+type ProtoExtendSignature struct {
+	SI        network.ServerIdentityID
+	Signature crypto.SchnorrSig
+}
+
+// ProtoExtendRoster asks a conode whether it would be OK to accept a new block
+// with himself as part of the roster.
+type ProtoExtendRoster struct {
+	Genesis SkipBlockID
+}
+
+// ProtoStructExtendRoster embeds the treenode
+type ProtoStructExtendRoster struct {
+	*onet.TreeNode
+	ProtoExtendRoster
+}
+
+// ProtoExtendRosterReply is a signature on the Genesis-id.
+type ProtoExtendRosterReply struct {
+	Signature *crypto.SchnorrSig
+}
+
+// ProtoStructExtendRosterReply embeds the treenode
+type ProtoStructExtendRosterReply struct {
+	*onet.TreeNode
+	ProtoExtendRosterReply
+}
+
+// ProtoGetUpdate requests the latest block
+type ProtoGetUpdate struct {
+	SBID SkipBlockID
+}
+
+// ProtoStructGetUpdate embeds the treenode
+type ProtoStructGetUpdate struct {
+	*onet.TreeNode
+	ProtoGetUpdate
+}
+
+// ProtoBlockReply returns a block - either from update or from getblock
+type ProtoBlockReply struct {
+	SkipBlock *SkipBlock
+}
+
+// ProtoStructBlockReply embeds the treenode
+type ProtoStructBlockReply struct {
+	*onet.TreeNode
+	ProtoBlockReply
 }
