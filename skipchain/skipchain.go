@@ -843,9 +843,9 @@ func newSkipchainService(c *onet.Context) onet.Service {
 	s.lastSave = time.Now()
 	log.ErrFatal(s.RegisterHandlers(s.StoreSkipBlock, s.GetUpdateChain,
 		s.GetSingleBlock, s.GetSingleBlockByIndex, s.GetAllSkipchains))
-	s.RegisterProcessorFunc(network.MessageType(GetBlock{}),
+	s.ServiceProcessor.RegisterProcessorFunc(network.MessageType(GetBlock{}),
 		s.getBlock)
-	s.RegisterProcessorFunc(network.MessageType(GetBlockReply{}),
+	s.ServiceProcessor.RegisterProcessorFunc(network.MessageType(GetBlockReply{}),
 		s.getBlockReply)
 
 	log.ErrFatal(s.registerVerification(VerifyBase, s.verifyFuncBase))
