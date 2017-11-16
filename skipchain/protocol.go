@@ -128,7 +128,7 @@ func (p *Protocol) HandleExtendRosterReply(reply []ProtoStructExtendRosterReply)
 	return nil
 }
 
-// HandleGetUpdate will search if a block is available to that service
+// HandleGetUpdate searches for a skipblock and returns it if it is found.
 func (p *Protocol) HandleGetUpdate(msg ProtoStructGetUpdate) error {
 	defer p.Done()
 

@@ -56,6 +56,7 @@ type Service struct {
 	newBlocks          map[string]bool
 }
 
+// Storage is saved to disk.
 type Storage struct {
 	// Sbm is the skipblock-map that holds all known skipblocks to this service.
 	Sbm *SkipBlockMap
@@ -212,7 +213,7 @@ func (s *Service) StoreSkipBlock(psbd *StoreSkipBlock) (*StoreSkipBlockReply, on
 					prev.GetForward(0)}); err != nil {
 				// This is not a critical failure - we have at least
 				// one forward-link
-				log.Error("Couldn't get old block to sign")
+				log.Error("Couldn't get old block to sign: " + err.Error())
 			} else {
 				changed = append(changed, back)
 			}
@@ -387,7 +388,7 @@ func (s *Service) forwardSignature(fs *ForwardSignature) error {
 	// TODO: is this really signed by target.roster?
 	sig, err := s.startBFT(bftFollowBlock, target.Roster, fs.ForwardLink.Hash, data)
 	if err != nil {
-		return errors.New("Couldn't get signature")
+		return errors.New("Couldn't get signature: " + err.Error())
 	}
 	s.Storage.Sbm.Lock()
 	log.Lvl1("Adding forward-link to", target.Index)
@@ -635,6 +636,7 @@ func (s *Service) addForwardLink(src, dst *SkipBlock) error {
 func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte) (*bftcosi.BFTSignature, error) {
 	tree := roster.GenerateNaryTreeWithRoot(2, s.ServerIdentity())
 	if tree == nil {
+		log.Print(roster)
 		return nil, errors.New("couldn't form tree")
 	}
 	node, err := s.CreateProtocol(proto, tree)
@@ -790,6 +792,7 @@ func (s *Service) willNodeAcceptGenesis(si *network.ServerIdentity, genesis Skip
 	}
 	pisc := pi.(*Protocol)
 	pisc.ER = &ProtoExtendRoster{Genesis: genesis}
+	pisc.GUSbm = s.Storage.Sbm
 	pisc.Start()
 	sigs := <-pisc.ERReply
 	// TODO: store the sigs in the skipblock to prove the other node was OK

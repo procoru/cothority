@@ -24,7 +24,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	log.MainTest(m)
+	log.MainTest(m, 3)
 }
 
 func TestService_StoreSkipBlock(t *testing.T) {
@@ -34,7 +34,7 @@ func TestService_StoreSkipBlock(t *testing.T) {
 	defer local.CloseAll()
 	_, el, genService := local.MakeHELS(5, skipchainSID)
 	service := genService.(*Service)
-	service.Sbm.SkipBlocks = make(map[string]*SkipBlock)
+	service.Storage.Sbm.SkipBlocks = make(map[string]*SkipBlock)
 
 	// Setting up root roster
 	sbRoot, err := makeGenesisRoster(service, el)
@@ -82,7 +82,7 @@ func TestService_StoreSkipBlock(t *testing.T) {
 	assert.NotEqual(t, 0, latest2.BackLinkIDs)
 
 	// We've added 2 blocks, + root block = 3
-	assert.Equal(t, 3, service.Sbm.Length())
+	assert.Equal(t, 3, service.Storage.Sbm.Length())
 }
 
 func TestService_GetUpdateChain(t *testing.T) {
@@ -107,7 +107,7 @@ func TestService_GetUpdateChain(t *testing.T) {
 		service := local.Services[servers[i].ServerIdentity.ID][skipchainSID].(*Service)
 		log.Lvl2("Doing skipblock", i, servers[i].ServerIdentity, newSB.Roster.List)
 		reply, err := service.StoreSkipBlock(&StoreSkipBlock{LatestID: sbs[i-1].Hash, NewBlock: newSB})
-		assert.Nil(t, err)
+		require.Nil(t, err)
 		require.NotNil(t, reply.Latest)
 		sbs[i] = reply.Latest
 	}
@@ -573,12 +573,12 @@ func TestService_Authentication(t *testing.T) {
 	log.ErrFatal(err)
 	ssb.Signature = &sig
 	_, cerr = service.StoreSkipBlock(ssb)
-	require.Equal(t, 0, len(services[1].Sbm.SkipBlocks))
+	require.Equal(t, 0, len(services[1].Storage.Sbm.SkipBlocks))
 	require.NotNil(t, cerr)
 
 	// make other services follow skipchain
 	log.Lvl2("correct 2 node signing")
-	services[1].Follow = []*SkipBlock{master0.Latest}
+	services[1].Storage.Follow = []*SkipBlock{master0.Latest}
 	sig, err = crypto.SignSchnorr(network.Suite, priv0, ssb.NewBlock.CalculateHash())
 	log.ErrFatal(err)
 	ssb.Signature = &sig
@@ -587,7 +587,7 @@ func TestService_Authentication(t *testing.T) {
 
 	// update skipblock and follow the skipblock
 	log.Lvl2("3 node signing with block update")
-	services[2].Follow = []*SkipBlock{master0.Latest}
+	services[2].Storage.Follow = []*SkipBlock{master0.Latest}
 	sb = sb.Copy()
 	sb.Roster = onet.NewRoster([]*network.ServerIdentity{ro.List[1], ro.List[0], ro.List[2]})
 	sb.Hash = sb.CalculateHash()
@@ -596,14 +596,14 @@ func TestService_Authentication(t *testing.T) {
 	sig, err = crypto.SignSchnorr(network.Suite, priv1, ssb.NewBlock.CalculateHash())
 	log.ErrFatal(err)
 	ssb.Signature = &sig
-	services[1].Sbm = service.Sbm
+	services[1].Storage.Sbm = service.Storage.Sbm
 	master2, cerr := services[1].StoreSkipBlock(ssb)
 	log.ErrFatal(cerr)
-	require.True(t, services[1].Sbm.GetByID(master1.Latest.Hash).ForwardLink[0].Hash.Equal(master2.Latest.Hash))
+	require.True(t, services[1].Storage.Sbm.GetByID(master1.Latest.Hash).ForwardLink[0].Hash.Equal(master2.Latest.Hash))
 }
 
 func checkMLForwardBackward(service *Service, root *SkipBlock, base, height int) error {
-	genesis := service.Sbm.GetByID(root.Hash)
+	genesis := service.Storage.Sbm.GetByID(root.Hash)
 	if genesis == nil {
 		return errors.New("didn't find genesis-block in service")
 	}
