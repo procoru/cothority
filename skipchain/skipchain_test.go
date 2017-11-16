@@ -287,7 +287,7 @@ func TestService_Verification(t *testing.T) {
 	require.NotNil(t, sbInter)
 	log.Lvl1("Creating skipblock with sub-Roster from root")
 	elSub := onet.NewRoster(el.List[0:2])
-	sbInter, err = makeGenesisRosterArgs(service, elSub, sbRoot.Hash, sb.VerifierIDs, 1, 1)
+	_, err = makeGenesisRosterArgs(service, elSub, sbRoot.Hash, sb.VerifierIDs, 1, 1)
 	log.ErrFatal(err)
 }
 
@@ -504,11 +504,11 @@ func TestService_ParallelStore(t *testing.T) {
 }
 
 func TestService_Propagation(t *testing.T) {
-	nbr_nodes := 100
+	nbrNodes := 100
 	local := onet.NewLocalTest()
 	defer waitPropagationFinished(t, local)
 	defer local.CloseAll()
-	servers, ro, genService := local.MakeHELS(nbr_nodes, skipchainSID)
+	servers, ro, genService := local.MakeHELS(nbrNodes, skipchainSID)
 	services := make([]*Service, len(servers))
 	for i, s := range local.GetServices(servers, skipchainSID) {
 		services[i] = s.(*Service)

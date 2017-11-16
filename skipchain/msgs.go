@@ -142,6 +142,7 @@ type GetBlockReply struct {
 
 // Protocol messages
 
+// Name can be used to reference this protocol.
 const Name = "sccomm"
 
 // ProtoExtendSignature can be used as proof that a node accepted to be included
