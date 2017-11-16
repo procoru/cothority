@@ -66,6 +66,15 @@ func (p *Protocol) Start() error {
 func (p *Protocol) HandleExtendRoster(msg ProtoStructExtendRoster) error {
 	defer p.Done()
 
+	if !AuthSkipchain {
+		sig, err := crypto.SignSchnorr(network.Suite, p.Private(), msg.Genesis)
+		if err != nil {
+			log.Error("couldn't sign genesis-block")
+			return p.SendToParent(&ProtoExtendRosterReply{})
+		}
+		return p.SendToParent(&ProtoExtendRosterReply{Signature: &sig})
+	}
+
 	if p.ERFollowers == nil {
 		return p.SendToParent(&ProtoExtendRosterReply{})
 	}
@@ -133,7 +142,7 @@ func (p *Protocol) HandleGetUpdate(msg ProtoStructGetUpdate) error {
 	defer p.Done()
 
 	if p.GUSbm == nil {
-		log.Error(p.ServerIdentity(), "no block stored in Sbm")
+		log.Lvl3(p.ServerIdentity(), "no block stored in Sbm")
 		return p.SendToParent(&ProtoBlockReply{})
 	}
 

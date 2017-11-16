@@ -13,14 +13,20 @@ import (
 
 const tsName = "tsName"
 
+var tsID onet.ServiceID
+
+func init() {
+	var err error
+	tsID, err = onet.RegisterNewService(tsName, newTestService)
+	log.ErrFatal(err)
+}
+
 // TestGU tests the GetUpdate message
 func TestGU(t *testing.T) {
-	tsid, err := onet.RegisterNewService(tsName, newTestService)
-	log.ErrFatal(err)
 	local := onet.NewLocalTest()
 	defer local.CloseAll()
 	servers, ro, _ := local.GenTree(2, true)
-	tss := local.GetServices(servers, tsid)
+	tss := local.GetServices(servers, tsID)
 
 	ts0 := tss[0].(*testService)
 	ts1 := tss[1].(*testService)
@@ -41,11 +47,13 @@ func TestGU(t *testing.T) {
 
 // TestER tests the ProtoExtendRoster message
 func TestER(t *testing.T) {
-	tsid, err := onet.RegisterNewService(tsName, newTestService)
-	log.ErrFatal(err)
+	skipchain.AuthSkipchain = true
+	defer func() {
+		skipchain.AuthSkipchain = false
+	}()
 	nodes := []int{2, 5, 13}
 	for _, nbrNodes := range nodes {
-		testER(t, tsid, nbrNodes)
+		testER(t, tsID, nbrNodes)
 	}
 }
 
