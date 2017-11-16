@@ -160,6 +160,7 @@ func TestClient_GetAllSkipchains(t *testing.T) {
 	sb2id := sb2.SkipChainID()
 
 	sbs, cerr := c.GetAllSkipchains(el.List[0])
+	log.ErrFatal(cerr)
 	require.Equal(t, 2, len(sbs.SkipChains))
 	sbs1id := sbs.SkipChains[0].SkipChainID()
 	sbs2id := sbs.SkipChains[1].SkipChainID()
@@ -180,13 +181,15 @@ func TestClient_GetSingleBlockByIndex(t *testing.T) {
 	log.ErrFatal(cerr)
 	reply2, cerr := c.StoreSkipBlock(sb1, roster, nil)
 	log.ErrFatal(cerr)
-	search, cerr := c.GetSingleBlockByIndex(roster, sb1.Hash, -1)
+	_, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, -1)
 	require.NotNil(t, cerr)
-	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 0)
+	search, cerr := c.GetSingleBlockByIndex(roster, sb1.Hash, 0)
+	log.ErrFatal(cerr)
 	require.True(t, sb1.Equal(search))
 	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 1)
+	log.ErrFatal(cerr)
 	require.True(t, reply2.Latest.Equal(search))
-	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 2)
+	_, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 2)
 	require.NotNil(t, cerr)
 }
 
