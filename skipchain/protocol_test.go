@@ -30,7 +30,7 @@ func TestGU(t *testing.T) {
 	sb1 := skipchain.NewSkipBlock()
 	sb1.BackLinkIDs = []skipchain.SkipBlockID{sb0.Hash}
 	sb1.Hash = sb1.CalculateHash()
-	bl := &skipchain.BlockLink{sb1.Hash, nil}
+	bl := &skipchain.BlockLink{Hash: sb1.Hash, Signature: nil}
 	sb0.ForwardLink = []*skipchain.BlockLink{bl}
 	ts0.Sbm = skipchain.NewSkipBlockMap()
 	ts0.Sbm.Store(sb0)
