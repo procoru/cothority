@@ -92,11 +92,10 @@ func (s *Service) StoreSkipBlock(psbd *StoreSkipBlock) (*StoreSkipBlockReply, on
 		if psbd.Signature == nil {
 			return nil, onet.NewClientErrorCode(ErrorParameterWrong,
 				"cannot create new skipblock without authentication")
-		} else {
-			if !s.authenticate(psbd.NewBlock.CalculateHash(), *psbd.Signature) {
-				return nil, onet.NewClientErrorCode(ErrorParameterWrong,
-					"wrong signature for this skipchain")
-			}
+		}
+		if !s.authenticate(psbd.NewBlock.CalculateHash(), *psbd.Signature) {
+			return nil, onet.NewClientErrorCode(ErrorParameterWrong,
+				"wrong signature for this skipchain")
 		}
 	}
 
@@ -792,7 +791,6 @@ func (s *Service) willNodeAcceptGenesis(si *network.ServerIdentity, genesis Skip
 	}
 	pisc := pi.(*Protocol)
 	pisc.ER = &ProtoExtendRoster{Genesis: genesis}
-	pisc.GUSbm = s.Storage.Sbm
 	pisc.Start()
 	sigs := <-pisc.ERReply
 	// TODO: store the sigs in the skipblock to prove the other node was OK
