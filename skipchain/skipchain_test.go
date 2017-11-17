@@ -602,6 +602,27 @@ func TestService_Authentication(t *testing.T) {
 	require.True(t, services[1].Storage.Sbm.GetByID(master1.Latest.Hash).ForwardLink[0].Hash.Equal(master2.Latest.Hash))
 }
 
+func TestService_AddFollow(t *testing.T) {
+	local := onet.NewLocalTest()
+	defer waitPropagationFinished(t, local)
+	defer local.CloseAll()
+	servers, roster, _ := local.MakeHELS(3, skipchainSID)
+	service0 := local.GetServices(servers, skipchainSID)[0].(*Service)
+	service1 := local.GetServices(servers, skipchainSID)[1].(*Service)
+	service2 := local.GetServices(servers, skipchainSID)[2].(*Service)
+	roster0 := onet.NewRoster(roster.List[0:1])
+	roster1 := onet.NewRoster(roster.List[0:2])
+	roster2 := onet.NewRoster(roster.List[0:3])
+
+	AuthSkipchain = true
+	log.Printf("%+v", roster0)
+	sb0, cerr := NewClient().CreateGenesis(roster0, 1, 1, VerificationNone, nil, nil)
+	log.ErrFatal(cerr)
+	sb1, cerr := NewClient().CreateGenesis(roster1, 1, 1, VerificationNone, nil, nil)
+	require.NotNil(t, cerr)
+	log.Print(service0, service1, service2, roster2, sb0, sb1)
+}
+
 func TestService_CreateLinkPrivate(t *testing.T) {
 	local := onet.NewLocalTest()
 	defer waitPropagationFinished(t, local)

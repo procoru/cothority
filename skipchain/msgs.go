@@ -66,7 +66,8 @@ func init() {
 // the given SkipBlock. If the given SkipBlock has Index 0 (which
 // is invalid), a new SkipChain will be created.
 // if AuthSkipchain == true, then the signature has to be a valid
-// Schnorr signature on the hash of the NewBlock.
+// Schnorr signature on the hash of the NewBlock by either one of the
+// conodes in the roster or by one of the clients.
 type StoreSkipBlock struct {
 	LatestID  SkipBlockID
 	NewBlock  *SkipBlock

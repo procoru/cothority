@@ -63,6 +63,10 @@ type Storage struct {
 	// Follow is a slice of latest blocks that point to skipchains that are allowed
 	// to create new blocks
 	Follow []*SkipBlock
+	// FollowIDs is a slice of IDs that have not been identified yet. Everytime
+	// somebody asks this node to participate in a skipchain, and he's not in one
+	// of the available skipblocks, he'll be asked if he knows that skipblock.
+	FollowIDs []SkipBlockID
 	// Clients is a list of public keys of clients that have successfully linked
 	// to this service
 	Clients []abstract.Point
@@ -360,7 +364,30 @@ func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
 	if !s.verifySigs(add.SkipchainID, add.Signature) {
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature of unknown signer")
 	}
-	s.Storage.Follow = append(s.Storage.Follow, add.SkipchainID)
+	// First search if anybody knows that SkipBlockID
+	sis := map[string]*network.ServerIdentity{}
+	for _, sb := range s.Storage.Follow {
+		for _, si := range sb.Roster.List {
+			sis[si.ID.String()] = si
+		}
+	}
+	found := false
+	for _, si := range sis {
+		roster := onet.NewRoster([]*network.ServerIdentity{si})
+		reply, cerr := NewClient().GetUpdateChain(roster, add.SkipchainID)
+		if cerr == nil {
+			last := reply.Update[len(reply.Update)-1]
+			if last.CalculateHash().Equal(add.SkipchainID) {
+				s.Storage.Follow = append(s.Storage.Follow, last)
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		s.Storage.FollowIDs = append(s.Storage.FollowIDs, add.SkipchainID)
+	}
+	return &EmptyReply{}, nil
 }
 
 // IsPropagating returns true if there is at least one propagation running.
