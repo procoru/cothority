@@ -45,97 +45,8 @@ func main() {
 	cliApp := cli.NewApp()
 	cliApp.Name = "scmgr"
 	cliApp.Usage = "Create, modify and query skipchains"
-	cliApp.Version = "0.1"
-	groupsDef := "the group-definition-file"
-	cliApp.Commands = []cli.Command{
-		{
-			Name:      "create",
-			Usage:     "make a new skipchain",
-			Aliases:   []string{"c"},
-			ArgsUsage: groupsDef,
-			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "base, b",
-					Value: 2,
-					Usage: "base for skipchains",
-				},
-				cli.IntFlag{
-					Name:  "height, he",
-					Value: 2,
-					Usage: "maximum height of skipchain",
-				},
-				cli.StringFlag{
-					Name:  "html",
-					Usage: "URL of html-skipchain",
-				},
-			},
-			Action: create,
-		},
-		{
-			Name:      "join",
-			Usage:     "join a skipchain and store it locally",
-			Aliases:   []string{"j"},
-			ArgsUsage: groupsDef + " skipchain-id",
-			Action:    join,
-		},
-		{
-			Name:      "add",
-			Usage:     "add a new roster to a skipchain",
-			Aliases:   []string{"a"},
-			ArgsUsage: "skipchain-id " + groupsDef,
-			Action:    add,
-		},
-		{
-			Name:      "addWeb",
-			Usage:     "add a web-site to a skipchain",
-			Aliases:   []string{"a"},
-			ArgsUsage: "skipchain-id page.html",
-			Action:    addWeb,
-		},
-		{
-			Name:      "update",
-			Usage:     "get latest valid block",
-			Aliases:   []string{"u"},
-			ArgsUsage: "skipchain-id",
-			Action:    update,
-		},
-		{
-			Name:  "list",
-			Usage: "handle list of skipblocks",
-			Subcommands: []cli.Command{
-				{
-					Name:    "known",
-					Aliases: []string{"k"},
-					Usage:   "lists all known skipblocks",
-					Flags: []cli.Flag{
-						cli.BoolFlag{
-							Name:  "long, l",
-							Usage: "give long id of blocks",
-						},
-					},
-					Action: lsKnown,
-				},
-				{
-					Name:      "index",
-					Usage:     "create index-files for all known skipchains",
-					ArgsUsage: "output path",
-					Action:    lsIndex,
-				},
-				{
-					Name:      "fetch",
-					Usage:     "ask all known conodes for skipchains",
-					ArgsUsage: "[group-file]",
-					Flags: []cli.Flag{
-						cli.BoolFlag{
-							Name:  "recursive, r",
-							Usage: "recurse into other conodes",
-						},
-					},
-					Action: lsFetch,
-				},
-			},
-		},
-	}
+	cliApp.Version = "0.2"
+	cliApp.Commands = getCommands()
 	cliApp.Flags = []cli.Flag{
 		app.FlagDebug,
 		cli.StringFlag{
@@ -148,11 +59,17 @@ func main() {
 		log.SetDebugVisible(c.Int("debug"))
 		return nil
 	}
-	cliApp.Run(os.Args)
+	log.ErrFatal(cliApp.Run(os.Args))
 }
 
+func adminLink(c *cli.Context) error     { return nil }
+func adminAuth(c *cli.Context) error     { return nil }
+func adminFollow(c *cli.Context) error   { return nil }
+func adminUnfollow(c *cli.Context) error { return nil }
+func adminList(c *cli.Context) error     { return nil }
+
 // Creates a new skipchain with the given roster
-func create(c *cli.Context) error {
+func scCreate(c *cli.Context) error {
 	log.Info("Create skipchain")
 	group := readGroup(c, 0)
 	client := skipchain.NewClient()
@@ -176,7 +93,7 @@ func create(c *cli.Context) error {
 }
 
 // Joins a given skipchain
-func join(c *cli.Context) error {
+func lsJoin(c *cli.Context) error {
 	log.Info("Joining skipchain")
 	if c.NArg() < 2 {
 		return errors.New("Please give group-file and id of known block")
@@ -189,6 +106,7 @@ func join(c *cli.Context) error {
 	}
 	gcr, cerr := client.GetUpdateChain(group.Roster, hash)
 	if cerr != nil {
+		log.Error(cerr)
 		return cerr
 	}
 	latest := gcr.Update[len(gcr.Update)-1]
@@ -204,7 +122,7 @@ func join(c *cli.Context) error {
 }
 
 // Returns the number of calls.
-func add(c *cli.Context) error {
+func scAdd(c *cli.Context) error {
 	log.Info("Adding a block with a new group")
 	if c.NArg() < 2 {
 		return errors.New("Please give group-file and id to add")
@@ -232,7 +150,7 @@ func add(c *cli.Context) error {
 }
 
 // Adds a block with the page inside.
-func addWeb(c *cli.Context) error {
+func scAddWeb(c *cli.Context) error {
 	log.Info("Adding a block with a page")
 	if c.NArg() < 2 {
 		log.Fatal("Please give skipchain-id and html-file to save")
@@ -265,7 +183,7 @@ func addWeb(c *cli.Context) error {
 }
 
 // Updates a block to the latest block
-func update(c *cli.Context) error {
+func scUpdate(c *cli.Context) error {
 	log.Info("Updating block")
 	if c.NArg() < 1 {
 		return errors.New("please give block-id to update")

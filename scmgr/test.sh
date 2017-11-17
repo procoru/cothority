@@ -11,15 +11,21 @@ main(){
 	startTest
 	buildConode github.com/dedis/cothority/skipchain
 	CFG=$BUILDDIR/config.bin
-	test Restart
-	test Config
-	test Create
-	test Join
-	test Add
-	test Index
-	test Html
-	test Fetch
+	# test Restart
+	# test Config
+	# test Create
+	# test Join
+	# test Add
+	# test Index
+	# test Html
+	# test Fetch
+	test Follow
 	stopTest
+}
+
+testFollow(){
+	startCl
+
 }
 
 testFetch(){
@@ -34,12 +40,12 @@ testFetch(){
 
 testHtml(){
 	startCl
-	testOK runSc create -html http://dedis.ch public.toml
+	testOK runSc sc create -html http://dedis.ch public.toml
 	ID=$( runSc list known | head -n 1 | sed -e "s/.*block \(.*\) with.*/\1/" )
 	html=$(mktemp)
 	echo "TestWeb" > $html
 	echo $ID - $html
-	testOK runSc addWeb $ID $html
+	testOK runSc sc addWeb $ID $html
 	rm $html
 }
 
@@ -48,42 +54,42 @@ testRestart(){
 	setupGenesis
 	pkill -9 conode 2> /dev/null
 	runCoBG 1 2
-	testOK runSc add $ID public.toml
+	testOK runSc sc add $ID public.toml
 }
 
 testAdd(){
 	startCl
 	setupGenesis
-	testFail runSc add 1234 public.toml
-	testOK runSc add $ID public.toml
+	testFail runSc sc add 1234 public.toml
+	testOK runSc sc add $ID public.toml
 	runCoBG 3
-	runGrepSed "Latest block of" "s/.* //" runSc update $ID
+	runGrepSed "Latest block of" "s/.* //" runSc sc update $ID
 	LATEST=$SED
-	testOK runSc add $LATEST public.toml
+	testOK runSc sc add $LATEST public.toml
 }
 
 setupGenesis(){
-	runGrepSed "Created new" "s/.* //" runSc create public.toml
+	runGrepSed "Created new" "s/.* //" runSc sc create public.toml
 	ID=$SED
 }
 
 testJoin(){
 	startCl
-	runGrepSed "Created new" "s/.* //" runSc create public.toml
+	runGrepSed "Created new" "s/.* //" runSc sc create public.toml
 	ID=$SED
 	rm $CFG
 	testGrep "Didn't find any" runSc list known
-	testFail runSc join public.toml 1234
+	testFail runSc list join public.toml 1234
 	testGrep "Didn't find any" runSc list known
-	testOK runSc join public.toml $ID
+	testOK runSc list join public.toml $ID
 	testGrep $ID runSc list known -l
 }
 
 testCreate(){
 	startCl
 	testGrep "Didn't find any" runSc list known -l
-	testFail runSc create
-	testOK runSc create public.toml
+	testFail runSc sc create
+	testOK runSc sc create public.toml
 	testGrep "Genesis-block" runSc list known -l
 }
 
@@ -108,8 +114,8 @@ testConfig(){
 	CFG=$CFGDIR/config.bin
 	rmdir $CFGDIR
 	head -n 4 public.toml > one.toml
-	testOK runSc create one.toml
-	testOK runSc create public.toml
+	testOK runSc sc create one.toml
+	testOK runSc sc create public.toml
 	rm -rf $CFGDIR
 	CFG=$OLDCFG
 }
