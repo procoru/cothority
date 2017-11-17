@@ -9,6 +9,8 @@ import (
 
 	"sync"
 
+	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/config"
 	"gopkg.in/dedis/onet.v1"
 	"gopkg.in/dedis/onet.v1/log"
 	"gopkg.in/dedis/onet.v1/network"
@@ -191,6 +193,79 @@ func TestClient_GetSingleBlockByIndex(t *testing.T) {
 	require.True(t, reply2.Latest.Equal(search))
 	_, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 2)
 	require.NotNil(t, cerr)
+}
+
+func TestClient_CreateLinkPrivate(t *testing.T) {
+	ls := linked(1)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	cerr := ls.client.CreateLinkPrivate(ls.server.ServerIdentity, ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+}
+
+func TestClient_SettingAuthentication(t *testing.T) {
+	ls := linked(1)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	cerr := ls.client.CreateLinkPrivate(ls.si, ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+	require.False(t, AuthSkipchain)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, true)
+	log.ErrFatal(cerr)
+	require.True(t, AuthSkipchain)
+}
+
+func TestClient_Follow(t *testing.T) {
+	ls := linked(2)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	cerr := ls.client.CreateLinkPrivate(ls.si, ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+	cerr = ls.client.CreateLinkPrivate(ls.roster.List[1], ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, true)
+	require.Nil(t, cerr)
+
+	_, cerr = ls.client.CreateGenesis(ls.roster, 1, 1, VerificationNone, nil, nil)
+	require.NotNil(t, cerr)
+
+	roster := onet.NewRoster([]*network.ServerIdentity{ls.si})
+	genesis, cerr := ls.client.CreateGenesis(roster, 1, 1, VerificationNone, nil, nil)
+	require.Nil(t, cerr)
+	cerr = ls.client.AddFollow(ls.roster.List[1], ls.priv, genesis.SkipChainID())
+	require.Nil(t, cerr)
+
+	_, cerr = ls.client.CreateGenesis(ls.roster, 1, 1, VerificationNone, nil, nil)
+	require.Nil(t, cerr)
+}
+
+type linkStruct struct {
+	local    *onet.LocalTest
+	roster   *onet.Roster
+	servers  []*onet.Server
+	server   *onet.Server
+	service  *Service
+	si       *network.ServerIdentity
+	servPriv abstract.Scalar
+	priv     abstract.Scalar
+	pub      abstract.Point
+	client   *Client
+}
+
+func linked(nbr int) *linkStruct {
+	kp := config.NewKeyPair(network.Suite)
+	ls := &linkStruct{
+		local: onet.NewTCPTest(),
+		priv:  kp.Secret,
+		pub:   kp.Public,
+	}
+	ls.servers, ls.roster, _ = ls.local.GenTree(nbr, true)
+	ls.server = ls.servers[0]
+	ls.si = ls.server.ServerIdentity
+	ls.servPriv = ls.local.GetPrivate(ls.server)
+	ls.service = ls.local.GetServices(ls.servers, skipchainSID)[0].(*Service)
+	ls.client = newTestClient(ls.local)
+	return ls
 }
 
 func newTestClient(l *onet.LocalTest) *Client {

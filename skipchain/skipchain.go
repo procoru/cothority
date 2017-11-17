@@ -63,6 +63,9 @@ type Storage struct {
 	// Follow is a slice of latest blocks that point to skipchains that are allowed
 	// to create new blocks
 	Follow []*SkipBlock
+	// Clients is a list of public keys of clients that have successfully linked
+	// to this service
+	Clients []abstract.Point
 }
 
 // StoreSkipBlock stores a new skipblock in the system. This can be either a
@@ -324,6 +327,42 @@ func (s *Service) GetAllSkipchains(id *GetAllSkipchains) (*GetAllSkipchainsReply
 	return reply, nil
 }
 
+// CreateLinkPrivate checks if the given public key is signed with our private
+// key and stores it in the list of allowed clients if it is true.
+func (s *Service) CreateLinkPrivate(link *CreateLinkPrivate) (*EmptyReply, onet.ClientError) {
+	msg, err := link.Public.MarshalBinary()
+	if err != nil {
+		return nil, onet.NewClientErrorCode(ErrorOnet, "couldn't marshal public key: "+err.Error())
+	}
+	if err = crypto.VerifySchnorr(network.Suite, s.ServerIdentity().Public, msg, link.Signature); err != nil {
+		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature on public key: "+err.Error())
+	}
+	s.Storage.Clients = append(s.Storage.Clients, link.Public)
+	return &EmptyReply{}, nil
+}
+
+// SettingAuthentication stores whether this conode should verify the authentication
+// of new skipblocks.
+func (s *Service) SettingAuthentication(auth *SettingAuthentication) (*EmptyReply, onet.ClientError) {
+	msg := []byte{0}
+	if auth.Authentication {
+		msg[0] = byte(1)
+	}
+	if !s.verifySigs(msg, auth.Signature) {
+		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature or unknown signer")
+	}
+	AuthSkipchain = auth.Authentication
+	return &EmptyReply{}, nil
+}
+
+// AddFollow adds a new skipchain to be followed
+func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
+	if !s.verifySigs(add.SkipchainID, add.Signature) {
+		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature of unknown signer")
+	}
+	s.Storage.Follow = append(s.Storage.Follow, add.SkipchainID)
+}
+
 // IsPropagating returns true if there is at least one propagation running.
 func (s *Service) IsPropagating() bool {
 	s.newBlocksMutex.Lock()
@@ -343,6 +382,20 @@ func (s *Service) NewProtocol(ti *onet.TreeNodeInstance, conf *onet.GenericConfi
 		}
 	}
 	return
+}
+
+func (s *Service) verifySigs(msg, sig []byte) bool {
+	// If there are no clients, all signatures verify.
+	if len(s.Storage.Clients) == 0 {
+		return true
+	}
+
+	for _, cl := range s.Storage.Clients {
+		if crypto.VerifySchnorr(network.Suite, cl, msg, sig) == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) callGetBlock(known *SkipBlock, unknown SkipBlockID) (*SkipBlock, error) {
@@ -843,7 +896,8 @@ func newSkipchainService(c *onet.Context) onet.Service {
 	}
 	s.lastSave = time.Now()
 	log.ErrFatal(s.RegisterHandlers(s.StoreSkipBlock, s.GetUpdateChain,
-		s.GetSingleBlock, s.GetSingleBlockByIndex, s.GetAllSkipchains))
+		s.GetSingleBlock, s.GetSingleBlockByIndex, s.GetAllSkipchains,
+		s.CreateLinkPrivate))
 	s.ServiceProcessor.RegisterProcessorFunc(network.MessageType(GetBlock{}),
 		s.getBlock)
 	s.ServiceProcessor.RegisterProcessorFunc(network.MessageType(GetBlockReply{}),

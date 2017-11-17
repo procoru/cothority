@@ -1,6 +1,7 @@
 package skipchain
 
 import (
+	"gopkg.in/dedis/crypto.v0/abstract"
 	"gopkg.in/dedis/onet.v1"
 	"gopkg.in/dedis/onet.v1/crypto"
 	"gopkg.in/dedis/onet.v1/network"
@@ -20,6 +21,20 @@ func init() {
 		// Fetch all skipchains
 		&GetAllSkipchains{},
 		&GetAllSkipchainsReply{},
+		// Create link with client
+		&CreateLinkPrivate{},
+		// Setting authentication
+		&SettingAuthentication{},
+		// Adding a skipchain to follow
+		&AddFollow{},
+		// Removing a skipchain from following
+		&DelFollow{},
+		// EmptyReply for calls that only return errors
+		&EmptyReply{},
+		// Lists all skipchains we follow
+		&ListFollow{},
+		// Returns the genesis-blocks of all skipchains we follow
+		&ListFollowReply{},
 		// - Internal calls
 		// Propagation
 		&PropagateSkipBlocks{},
@@ -195,4 +210,47 @@ type ProtoBlockReply struct {
 type ProtoStructBlockReply struct {
 	*onet.TreeNode
 	ProtoBlockReply
+}
+
+// CreateLinkPrivate asks to store the given public key in the list of administrative
+// clients.
+type CreateLinkPrivate struct {
+	Public    abstract.Point
+	Signature []byte
+}
+
+// EmptyReply is an empty reply. If there was an error in the
+// request, it will be returned
+type EmptyReply struct{}
+
+// SettingAuthentication sets the authentication bit that enables restriction
+// of the skipchains that are accepted. It needs to be signed by one of the
+// clients. The signature is on []byte{0} if Authentication is false and on
+// []byte{1} if the Authentication is true.
+// TODO: perhaps we need to protect this against replay-attacks by adding a
+// monotonically increasing nonce that is also stored on the conode.
+type SettingAuthentication struct {
+	Authentication bool
+	Signature      []byte
+}
+
+// Adding a skipchain to follow. The Signature is on the SkipchainID.
+type AddFollow struct {
+	SkipchainID SkipBlockID
+	Signature   []byte
+}
+
+// Removing a skipchain from following. The Signature is on the SkipchainID.
+type DelFollow struct {
+	SkipchainID SkipBlockID
+	Signature   []byte
+}
+
+// Lists all skipchains we follow
+type ListFollow struct {
+}
+
+// Returns the genesis-blocks of all skipchains we follow
+type ListFollowReply struct {
+	Follow []SkipBlock
 }

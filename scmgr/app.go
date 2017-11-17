@@ -24,15 +24,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/dedis/cothority/skipchain"
+	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/random"
 	"gopkg.in/dedis/onet.v1"
+	"gopkg.in/dedis/onet.v1/crypto"
 	"gopkg.in/dedis/onet.v1/log"
 	"gopkg.in/dedis/onet.v1/network"
 	"gopkg.in/urfave/cli.v1"
 )
 
 type config struct {
-	Sbm *skipchain.SkipBlockMap
+	Sbm     *skipchain.SkipBlockMap
+	Private abstract.Scalar
 }
 
 type html struct {
@@ -62,7 +67,34 @@ func main() {
 	log.ErrFatal(cliApp.Run(os.Args))
 }
 
-func adminLink(c *cli.Context) error     { return nil }
+// adminLink tries to store our public key in the conode
+func adminLink(c *cli.Context) error {
+	if pin := c.String("pin"); pin != "" {
+		return errors.New("pin entry not implemented yet")
+	}
+	private := c.String("private")
+	if private == "" {
+		return errors.New("give either pin or private key")
+	}
+	var remote struct {
+		Private string
+		Address network.Address
+	}
+	_, err := toml.DecodeFile(private, &remote)
+	if err != nil {
+		return err
+	}
+	pkey, err := crypto.StringHexToScalar(network.Suite, private)
+	if err != nil {
+		return errors.New("couldn't decode private key: " + err.Error())
+	}
+	cfg := getConfigOrFail(c)
+	cfg.Private = network.Suite.NewKey(random.Stream)
+	si := network.NewServerIdentity(nil, remote.Address)
+	skipchain.NewClient().CreateLinkPrivate(si, pkey, network.Suite.Point().Mul(nil, cfg.Private))
+	return cfg.save(c)
+}
+
 func adminAuth(c *cli.Context) error     { return nil }
 func adminFollow(c *cli.Context) error   { return nil }
 func adminUnfollow(c *cli.Context) error { return nil }

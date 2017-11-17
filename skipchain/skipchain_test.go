@@ -602,6 +602,24 @@ func TestService_Authentication(t *testing.T) {
 	require.True(t, services[1].Storage.Sbm.GetByID(master1.Latest.Hash).ForwardLink[0].Hash.Equal(master2.Latest.Hash))
 }
 
+func TestService_CreateLinkPrivate(t *testing.T) {
+	local := onet.NewLocalTest()
+	defer waitPropagationFinished(t, local)
+	defer local.CloseAll()
+	servers, _, _ := local.MakeHELS(3, skipchainSID)
+	server := servers[0]
+	service := local.GetServices(servers, skipchainSID)[0].(*Service)
+	require.Equal(t, 0, len(service.Storage.Clients))
+	_, cerr := service.CreateLinkPrivate(&CreateLinkPrivate{Public: servers[0].ServerIdentity.Public, Signature: []byte{}})
+	require.NotNil(t, cerr)
+	msg, err := server.ServerIdentity.Public.MarshalBinary()
+	require.NotNil(t, cerr)
+	sig, err := crypto.SignSchnorr(network.Suite, local.GetPrivate(servers[0]), msg)
+	log.ErrFatal(err)
+	_, cerr = service.CreateLinkPrivate(&CreateLinkPrivate{Public: servers[0].ServerIdentity.Public, Signature: sig})
+	log.ErrFatal(cerr)
+}
+
 func checkMLForwardBackward(service *Service, root *SkipBlock, base, height int) error {
 	genesis := service.Storage.Sbm.GetByID(root.Hash)
 	if genesis == nil {

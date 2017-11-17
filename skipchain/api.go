@@ -3,6 +3,7 @@ package skipchain
 import (
 	"gopkg.in/dedis/crypto.v0/abstract"
 	"gopkg.in/dedis/onet.v1"
+	"gopkg.in/dedis/onet.v1/crypto"
 	"gopkg.in/dedis/onet.v1/log"
 	"gopkg.in/dedis/onet.v1/network"
 )
@@ -41,22 +42,22 @@ func NewClient() *Client {
 
 // StoreSkipBlock asks the cothority to store the new skipblock, and eventually
 // attach it to the 'latest' skipblock.
-//  - latest is the skipblock where the new skipblock is appended. If el and d
+//  - latest is the skipblock where the new skipblock is appended. If ro and d
 //   are nil, a new skipchain will be created with 'latest' as genesis-block.
-//  - el is the new roster for that block. If el is nil, the previous roster
+//  - ro is the new roster for that block. If ro is nil, the previous roster
 //   will be used.
 //  - d is the data for the new block. It can be nil. If it is not of type
 //   []byte, it will be marshalled using `network.Marshal`.
-func (c *Client) StoreSkipBlock(latest *SkipBlock, el *onet.Roster, d network.Message) (reply *StoreSkipBlockReply, cerr onet.ClientError) {
+func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Message) (reply *StoreSkipBlockReply, cerr onet.ClientError) {
 	log.Lvlf3("%#v", latest)
 	var newBlock *SkipBlock
 	var latestID SkipBlockID
-	if el == nil && d == nil {
+	if ro == nil && d == nil {
 		newBlock = latest
 	} else {
 		newBlock = latest.Copy()
-		if el != nil {
-			newBlock.Roster = el
+		if ro != nil {
+			newBlock.Roster = ro
 		}
 		if d != nil {
 			var ok bool
@@ -83,7 +84,7 @@ func (c *Client) StoreSkipBlock(latest *SkipBlock, el *onet.Roster, d network.Me
 
 // CreateGenesis is a convenience function to create a new SkipChain with the
 // given parameters.
-//  - el is the responsible roster
+//  - ro is the responsible roster
 //  - baseH is the base-height - the distance between two non-height-1 skipblocks
 //  - maxH is the maximum height, which must be <= baseH
 //  - ver is a slice of verifications to apply to that block
@@ -93,10 +94,10 @@ func (c *Client) StoreSkipBlock(latest *SkipBlock, el *onet.Roster, d network.Me
 //  - parent is the responsible parent-block, can be 'nil'
 //
 // This function returns the created skipblock or nil and an error.
-func (c *Client) CreateGenesis(el *onet.Roster, baseH, maxH int, ver []VerifierID,
+func (c *Client) CreateGenesis(ro *onet.Roster, baseH, maxH int, ver []VerifierID,
 	data interface{}, parent SkipBlockID) (*SkipBlock, onet.ClientError) {
 	genesis := NewSkipBlock()
-	genesis.Roster = el
+	genesis.Roster = ro
 	genesis.VerifierIDs = ver
 	genesis.MaximumHeight = maxH
 	genesis.BaseHeight = baseH
@@ -182,4 +183,50 @@ func (c *Client) GetSingleBlockByIndex(roster *onet.Roster, genesis SkipBlockID,
 	cerr = c.SendProtobuf(roster.RandomServerIdentity(),
 		&GetSingleBlockByIndex{genesis, index}, reply)
 	return
+}
+
+// CreateLinkPrivate asks the conode to create a link by sending a public
+// key of the client, signed by the private key of the conode. The reasoning is
+// that an administrator should well be able to copy the private.toml-file from
+// the server and use that to authenticate and link to the conode.
+func (c *Client) CreateLinkPrivate(si *network.ServerIdentity, conodePriv abstract.Scalar,
+	pub abstract.Point) onet.ClientError {
+	reply := &EmptyReply{}
+	msg, err := pub.MarshalBinary()
+	if err != nil {
+		return onet.NewClientErrorCode(ErrorOnet, "couldn't marshal point: "+err.Error())
+	}
+	sig, err := crypto.SignSchnorr(network.Suite, conodePriv, msg)
+	if err != nil {
+		return onet.NewClientErrorCode(ErrorOnet, "couldn't sign public key: "+err.Error())
+	}
+	return c.SendProtobuf(si, &CreateLinkPrivate{Public: pub, Signature: sig}, reply)
+}
+
+// SettingAuthentication enables or disables the authentication handling of the
+// skipchain. If it is set to true, the skipchain will only allow handling of
+// skipchains where _all_ rosters are in the combined set of rosters stored in
+// the latest blocks of all skipchains stored in the `Follow`-field of the
+// skipchain-service.
+func (c *Client) SettingAuthentication(si *network.ServerIdentity, clientPriv abstract.Scalar, auth bool) onet.ClientError {
+	return nil
+}
+
+// AddFollow gives a skipchain-id to the conode that should be used to allow/disallow
+// new blocks. Only if SettingAuthentication(true) has been called is this active.
+func (c *Client) AddFollow(si *network.ServerIdentity, clientPriv abstract.Scalar, sbid SkipBlockID) onet.ClientError {
+	return nil
+}
+
+// DelFollow asks the conode to remove a skipchain-id from the list of skipchains that are
+// used to to allow/disallow new blocks. Only if SettingAuthentication(true) has
+// been called is this active.
+func (c *Client) DelFollow(si *network.ServerIdentity, clientPriv abstract.Scalar, sbid SkipBlockID) onet.ClientError {
+	return nil
+}
+
+// ListFollow returns the list of latest skipblock of all skipchains that are followed
+// for authentication purposes.
+func (c *Client) ListFollow(si *network.ServerIdentity) (*ListFollowReply, onet.ClientError) {
+	return nil, nil
 }

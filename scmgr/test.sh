@@ -19,19 +19,25 @@ main(){
 	# test Index
 	# test Html
 	# test Fetch
-	test Follow
+	test Auth
 	stopTest
 }
 
-testFollow(){
+testAuth(){
 	startCl
-
+	setupGenesis
+	testOK [ -n "$ID" ]
+	testFail runSc admin auth true
+	testOK runSc admin link -priv co2/private.toml
+	testOK runSc admin auth true
+	setupGenesis
+	testOK [ -z "$ID" ]
 }
 
 testFetch(){
 	startCl
 	setupGenesis
-	rm $CFG
+	rm -f $CFG
 	testFail runSc list fetch
 	testOK runSc list fetch public.toml
 	testGrep 2002 runSc list known
@@ -46,7 +52,7 @@ testHtml(){
 	echo "TestWeb" > $html
 	echo $ID - $html
 	testOK runSc sc addWeb $ID $html
-	rm $html
+	rm -f $html
 }
 
 testRestart(){
@@ -77,7 +83,7 @@ testJoin(){
 	startCl
 	runGrepSed "Created new" "s/.* //" runSc sc create public.toml
 	ID=$SED
-	rm $CFG
+	rm -f $CFG
 	testGrep "Didn't find any" runSc list known
 	testFail runSc list join public.toml 1234
 	testGrep "Didn't find any" runSc list known
@@ -125,7 +131,7 @@ runSc(){
 }
 
 startCl(){
-	rm $CFG
+	rm -f $CFG
 	runCoBG 1 2
 }
 
