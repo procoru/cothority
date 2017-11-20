@@ -40,7 +40,7 @@ func NewClient() *Client {
 	return &Client{Client: onet.NewClient("Skipchain")}
 }
 
-// StoreSkipBlock asks the cothority to store the new skipblock, and eventually
+// StoreSkipBlockSignature asks the cothority to store the new skipblock, and eventually
 // attach it to the 'latest' skipblock.
 //  - latest is the skipblock where the new skipblock is appended. If ro and d
 //   are nil, a new skipchain will be created with 'latest' as genesis-block.
@@ -105,7 +105,7 @@ func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Me
 	return c.StoreSkipBlockSignature(latest, ro, d, nil)
 }
 
-// CreateGenesis is a convenience function to create a new SkipChain with the
+// CreateGenesisSignature is a convenience function to create a new SkipChain with the
 // given parameters.
 //  - ro is the responsible roster
 //  - baseH is the base-height - the distance between two non-height-1 skipblocks

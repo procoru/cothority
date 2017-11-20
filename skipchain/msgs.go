@@ -235,7 +235,7 @@ type SettingAuthentication struct {
 	Signature      []byte
 }
 
-// Adding a skipchain to follow. The Signature is on the SkipchainID concatenated
+// AddFollow adds a skipchain to follow. The Signature is on the SkipchainID concatenated
 // with the SearchPolicy as a byte and the Conode.
 // The SearchPolicy is one of the following:
 //  - 0: add this skipchainID to FollowID, so this skipchain will be allowed to
@@ -252,17 +252,17 @@ type AddFollow struct {
 	Signature    []byte
 }
 
-// Removing a skipchain from following. The Signature is on the SkipchainID.
+// DelFollow removes a skipchain from following. The Signature is on the SkipchainID.
 type DelFollow struct {
 	SkipchainID SkipBlockID
 	Signature   []byte
 }
 
-// Lists all skipchains we follow
+// ListFollow returns all followed lists all skipchains we follow
 type ListFollow struct {
 }
 
-// Returns the genesis-blocks of all skipchains we follow
+// ListFollowReply returns the genesis-blocks of all skipchains we follow
 type ListFollowReply struct {
 	Follow []SkipBlock
 }
