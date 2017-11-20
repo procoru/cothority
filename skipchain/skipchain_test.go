@@ -17,7 +17,6 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/dedis/crypto.v0/config"
 	"gopkg.in/dedis/onet.v1"
 	"gopkg.in/dedis/onet.v1/crypto"
 	"gopkg.in/dedis/onet.v1/log"
@@ -524,7 +523,7 @@ func TestService_Propagation(t *testing.T) {
 	log.ErrFatal(err)
 }
 
-func TestService_Authentication(t *testing.T) {
+func TestService_AddFollow(t *testing.T) {
 	local := onet.NewLocalTest()
 	defer waitPropagationFinished(t, local)
 	defer local.CloseAll()
@@ -601,46 +600,6 @@ func TestService_Authentication(t *testing.T) {
 	master2, cerr := services[1].StoreSkipBlock(ssb)
 	log.ErrFatal(cerr)
 	require.True(t, services[1].Storage.Sbm.GetByID(master1.Latest.Hash).ForwardLink[0].Hash.Equal(master2.Latest.Hash))
-}
-
-func TestService_AddFollow(t *testing.T) {
-	local := onet.NewLocalTest()
-	defer waitPropagationFinished(t, local)
-	defer local.CloseAll()
-	servers, roster, _ := local.MakeHELS(3, skipchainSID)
-	service1 := local.GetServices(servers, skipchainSID)[1].(*Service)
-	roster0 := onet.NewRoster(roster.List[0:1])
-	roster1 := onet.NewRoster(roster.List[0:2])
-	roster2 := onet.NewRoster([]*network.ServerIdentity{roster.List[0],
-		roster.List[2]})
-	priv0 := local.GetPrivate(servers[0])
-	kp := config.NewKeyPair(network.Suite)
-
-	AuthSkipchain = 1
-	defer func() {
-		AuthSkipchain = 0
-	}()
-	sb0, cerr := NewClient().CreateGenesisSignature(roster0, 1, 1, VerificationNone, nil, nil,
-		priv0)
-	log.ErrFatal(cerr)
-
-	_, cerr = NewClient().StoreSkipBlockSignature(sb0, roster1, nil, priv0)
-	require.NotNil(t, cerr)
-	service1.Storage.Clients = append(service1.Storage.Clients, kp.Public)
-	sig, err := crypto.SignSchnorr(network.Suite, kp.Secret, sb0.CalculateHash())
-	log.ErrFatal(err)
-	_, cerr = service1.AddFollow(&AddFollow{SkipchainID: sb0.CalculateHash(), Signature: sig})
-	log.ErrFatal(cerr)
-	_, cerr = NewClient().StoreSkipBlockSignature(sb0, roster1, nil, priv0)
-	require.Nil(t, cerr)
-
-	// Create a new skipchain with roster0 and store it in
-	// service1, verifying it is correctly picked up as a
-	// skipblock.
-	sb1, cerr := NewClient().CreateGenesisSignature(roster2, 1, 1, VerificationNone, nil, nil,
-		priv0)
-	log.ErrFatal(cerr)
-	log.Print(sb1)
 }
 
 func TestService_CreateLinkPrivate(t *testing.T) {
