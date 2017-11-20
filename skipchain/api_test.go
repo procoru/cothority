@@ -209,33 +209,75 @@ func TestClient_SettingAuthentication(t *testing.T) {
 	require.Equal(t, 0, len(ls.service.Storage.Clients))
 	cerr := ls.client.CreateLinkPrivate(ls.si, ls.servPriv, ls.pub)
 	require.Nil(t, cerr)
-	require.False(t, AuthSkipchain)
-	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, true)
+	require.Equal(t, 0, AuthSkipchain)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, 1)
 	log.ErrFatal(cerr)
-	require.True(t, AuthSkipchain)
+	require.Equal(t, 1, AuthSkipchain)
 }
 
 func TestClient_Follow(t *testing.T) {
-	ls := linked(2)
+	ls := linked(3)
 	defer ls.local.CloseAll()
 	require.Equal(t, 0, len(ls.service.Storage.Clients))
-	cerr := ls.client.CreateLinkPrivate(ls.si, ls.servPriv, ls.pub)
+	priv0 := ls.servPriv
+	cerr := ls.client.CreateLinkPrivate(ls.si, priv0, ls.pub)
 	require.Nil(t, cerr)
-	cerr = ls.client.CreateLinkPrivate(ls.roster.List[1], ls.servPriv, ls.pub)
+	priv1 := ls.local.GetPrivate(ls.servers[1])
+	cerr = ls.client.CreateLinkPrivate(ls.roster.List[1], priv1, ls.servers[1].ServerIdentity.Public)
 	require.Nil(t, cerr)
-	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, true)
+	priv2 := ls.local.GetPrivate(ls.servers[2])
+	cerr = ls.client.CreateLinkPrivate(ls.roster.List[2], priv2, ls.servers[2].ServerIdentity.Public)
 	require.Nil(t, cerr)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, 1)
+	require.Nil(t, cerr)
+	defer func() {
+		AuthSkipchain = 0
+	}()
+	log.Lvl1(ls.roster)
 
-	_, cerr = ls.client.CreateGenesis(ls.roster, 1, 1, VerificationNone, nil, nil)
+	// Verify that server1 doesn't allow a new skipchain using server0 and server1
+	roster01 := onet.NewRoster(ls.roster.List[0:2])
+	_, cerr = ls.client.CreateGenesis(roster01, 1, 1, VerificationNone, nil, nil)
 	require.NotNil(t, cerr)
 
-	roster := onet.NewRoster([]*network.ServerIdentity{ls.si})
-	genesis, cerr := ls.client.CreateGenesis(roster, 1, 1, VerificationNone, nil, nil)
-	require.Nil(t, cerr)
-	cerr = ls.client.AddFollow(ls.roster.List[1], ls.priv, genesis.SkipChainID())
+	roster0 := onet.NewRoster([]*network.ServerIdentity{ls.si})
+	genesis, cerr := ls.client.CreateGenesisSignature(roster0, 1, 1, VerificationNone, nil, nil, priv0)
 	require.Nil(t, cerr)
 
-	_, cerr = ls.client.CreateGenesis(ls.roster, 1, 1, VerificationNone, nil, nil)
+	// Now server1 follows skipchain from server0, so it should allow a new skipblock,
+	// but not a new skipchain
+	log.Lvl1("(0) Following skipchain-id only")
+	cerr = ls.client.AddFollow(ls.roster.List[1], priv1, genesis.SkipChainID(), 0, "")
+	require.Nil(t, cerr)
+	block1, cerr := ls.client.StoreSkipBlockSignature(genesis, roster01, nil, priv0)
+	require.Nil(t, cerr)
+	genesis1, cerr := ls.client.CreateGenesisSignature(roster01, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(genesis1, roster01, nil, priv0)
+	require.NotNil(t, cerr)
+
+	// Now server1 follows the skipchain as a 'roster-inclusion' skipchain, so it
+	// should also allow creation of a new skipchain
+	log.Lvl1("(1) Following roster of skipchain")
+	cerr = ls.client.AddFollow(ls.roster.List[1], priv1, genesis.SkipChainID(), 1, "")
+	require.Nil(t, cerr)
+	block2, cerr := ls.client.StoreSkipBlockSignature(block1.Latest, roster01, nil, priv0)
+	require.Nil(t, cerr)
+	genesis2, cerr := ls.client.CreateGenesisSignature(roster01, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(genesis2, roster01, nil, priv0)
+	require.Nil(t, cerr)
+
+	// Finally test with third server
+	log.Lvl1("(1) Following skipchain-id only on server2")
+	cerr = ls.client.AddFollow(ls.roster.List[2], priv2, genesis.SkipChainID(), 1, "")
+	require.NotNil(t, cerr)
+	log.Lvl1("(2) Following skipchain-id only on server2")
+	cerr = ls.client.AddFollow(ls.roster.List[2], priv2, genesis.SkipChainID(), 2, ls.server.Address().NetworkAddress())
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(block2.Latest, ls.roster, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.CreateGenesisSignature(ls.roster, 1, 1, VerificationNone, nil, nil, priv0)
 	require.Nil(t, cerr)
 }
 

@@ -48,7 +48,9 @@ func NewClient() *Client {
 //   will be used.
 //  - d is the data for the new block. It can be nil. If it is not of type
 //   []byte, it will be marshalled using `network.Marshal`.
-func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Message) (reply *StoreSkipBlockReply, cerr onet.ClientError) {
+//  - priv is the private key that will be used to sign the skipblock. If priv
+//   is nil, the skipblock will not be signed.
+func (c *Client) StoreSkipBlockSignature(latest *SkipBlock, ro *onet.Roster, d network.Message, priv abstract.Scalar) (reply *StoreSkipBlockReply, cerr onet.ClientError) {
 	log.Lvlf3("%#v", latest)
 	var newBlock *SkipBlock
 	var latestID SkipBlockID
@@ -75,11 +77,32 @@ func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Me
 	}
 	host := latest.Roster.Get(0)
 	reply = &StoreSkipBlockReply{}
-	cerr = c.SendProtobuf(host, &StoreSkipBlock{LatestID: latestID, NewBlock: newBlock}, reply)
+	var sig crypto.SchnorrSig
+	if priv != nil {
+		var err error
+		sig, err = crypto.SignSchnorr(network.Suite, priv, newBlock.CalculateHash())
+		if err != nil {
+			return nil, onet.NewClientErrorCode(ErrorParameterWrong, "couldn't sign block: "+err.Error())
+		}
+	}
+	cerr = c.SendProtobuf(host, &StoreSkipBlock{LatestID: latestID, NewBlock: newBlock,
+		Signature: &sig}, reply)
 	if cerr != nil {
 		return nil, cerr
 	}
 	return reply, nil
+}
+
+// StoreSkipBlock asks the cothority to store the new skipblock, and eventually
+// attach it to the 'latest' skipblock.
+//  - latest is the skipblock where the new skipblock is appended. If ro and d
+//   are nil, a new skipchain will be created with 'latest' as genesis-block.
+//  - ro is the new roster for that block. If ro is nil, the previous roster
+//   will be used.
+//  - d is the data for the new block. It can be nil. If it is not of type
+//   []byte, it will be marshalled using `network.Marshal`.
+func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Message) (reply *StoreSkipBlockReply, cerr onet.ClientError) {
+	return c.StoreSkipBlockSignature(latest, ro, d, nil)
 }
 
 // CreateGenesis is a convenience function to create a new SkipChain with the
@@ -92,10 +115,11 @@ func (c *Client) StoreSkipBlock(latest *SkipBlock, ro *onet.Roster, d network.Me
 //    except if the data is of type []byte, in which case it will be stored
 //    as-is on the skipchain.
 //  - parent is the responsible parent-block, can be 'nil'
+//  - priv is a private key that is allowed to sign for new skipblocks
 //
 // This function returns the created skipblock or nil and an error.
-func (c *Client) CreateGenesis(ro *onet.Roster, baseH, maxH int, ver []VerifierID,
-	data interface{}, parent SkipBlockID) (*SkipBlock, onet.ClientError) {
+func (c *Client) CreateGenesisSignature(ro *onet.Roster, baseH, maxH int, ver []VerifierID,
+	data interface{}, parent SkipBlockID, priv abstract.Scalar) (*SkipBlock, onet.ClientError) {
 	genesis := NewSkipBlock()
 	genesis.Roster = ro
 	genesis.VerifierIDs = ver
@@ -114,11 +138,28 @@ func (c *Client) CreateGenesis(ro *onet.Roster, baseH, maxH int, ver []VerifierI
 			genesis.Data = buf
 		}
 	}
-	sb, cerr := c.StoreSkipBlock(genesis, nil, nil)
+	sb, cerr := c.StoreSkipBlockSignature(genesis, nil, nil, priv)
 	if cerr != nil {
 		return nil, cerr
 	}
 	return sb.Latest, nil
+}
+
+// CreateGenesis is a convenience function to create a new SkipChain with the
+// given parameters.
+//  - ro is the responsible roster
+//  - baseH is the base-height - the distance between two non-height-1 skipblocks
+//  - maxH is the maximum height, which must be <= baseH
+//  - ver is a slice of verifications to apply to that block
+//  - data can be nil or any data that will be network.Marshaled to the skipblock,
+//    except if the data is of type []byte, in which case it will be stored
+//    as-is on the skipchain.
+//  - parent is the responsible parent-block, can be 'nil'
+//
+// This function returns the created skipblock or nil and an error.
+func (c *Client) CreateGenesis(ro *onet.Roster, baseH, maxH int, ver []VerifierID,
+	data interface{}, parent SkipBlockID) (*SkipBlock, onet.ClientError) {
+	return c.CreateGenesisSignature(ro, baseH, maxH, ver, data, parent, nil)
 }
 
 // CreateRootControl is a convenience function and creates two Skipchains:
@@ -208,14 +249,36 @@ func (c *Client) CreateLinkPrivate(si *network.ServerIdentity, conodePriv abstra
 // skipchains where _all_ rosters are in the combined set of rosters stored in
 // the latest blocks of all skipchains stored in the `Follow`-field of the
 // skipchain-service.
-func (c *Client) SettingAuthentication(si *network.ServerIdentity, clientPriv abstract.Scalar, auth bool) onet.ClientError {
-	return nil
+func (c *Client) SettingAuthentication(si *network.ServerIdentity, clientPriv abstract.Scalar, auth int) onet.ClientError {
+	sig, err := crypto.SignSchnorr(network.Suite, clientPriv, []byte{byte(auth)})
+	if err != nil {
+		return onet.NewClientErrorCode(ErrorParameterWrong, "couldn't create signature:"+err.Error())
+	}
+	req := &SettingAuthentication{
+		Authentication: auth,
+		Signature:      sig,
+	}
+	return c.SendProtobuf(si, req, nil)
 }
 
 // AddFollow gives a skipchain-id to the conode that should be used to allow/disallow
 // new blocks. Only if SettingAuthentication(true) has been called is this active.
-func (c *Client) AddFollow(si *network.ServerIdentity, clientPriv abstract.Scalar, sbid SkipBlockID) onet.ClientError {
-	return nil
+func (c *Client) AddFollow(si *network.ServerIdentity, clientPriv abstract.Scalar,
+	scid SkipBlockID, searchPolicy int, conode string) onet.ClientError {
+	req := &AddFollow{
+		SkipchainID:  scid,
+		SearchPolicy: searchPolicy,
+		Conode:       conode,
+	}
+	msg := []byte{byte(searchPolicy)}
+	msg = append(scid, msg...)
+	msg = append(msg, []byte(conode)...)
+	sig, err := crypto.SignSchnorr(network.Suite, clientPriv, msg)
+	if err != nil {
+		return onet.NewClientErrorCode(ErrorParameterWrong, "couldn't sign message:"+err.Error())
+	}
+	req.Signature = sig
+	return c.SendProtobuf(si, req, nil)
 }
 
 // DelFollow asks the conode to remove a skipchain-id from the list of skipchains that are

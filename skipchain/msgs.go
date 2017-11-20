@@ -231,14 +231,25 @@ type EmptyReply struct{}
 // TODO: perhaps we need to protect this against replay-attacks by adding a
 // monotonically increasing nonce that is also stored on the conode.
 type SettingAuthentication struct {
-	Authentication bool
+	Authentication int
 	Signature      []byte
 }
 
-// Adding a skipchain to follow. The Signature is on the SkipchainID.
+// Adding a skipchain to follow. The Signature is on the SkipchainID concatenated
+// with the SearchPolicy as a byte and the Conode.
+// The SearchPolicy is one of the following:
+//  - 0: add this skipchainID to FollowID, so this skipchain will be allowed to
+//       ask this conode to store a skipblock
+//  - 1: search for this skipchainID in all conodes from all known blocks, only
+//       add it if the latest block is found. Then all conodes in the roster will
+//       be allowed to add SkipBlocks. Returns an error if it couldn't find it.
+//  - 2: the Conode-string holds an "IP:Port" combination of where the skipchain
+//       could be stored. Returns an error if it couldn't find it there.
 type AddFollow struct {
-	SkipchainID SkipBlockID
-	Signature   []byte
+	SkipchainID  SkipBlockID
+	SearchPolicy int
+	Conode       string
+	Signature    []byte
 }
 
 // Removing a skipchain from following. The Signature is on the SkipchainID.

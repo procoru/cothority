@@ -29,9 +29,10 @@ func init() {
 type Protocol struct {
 	*onet.TreeNodeInstance
 
-	ER          *ProtoExtendRoster
-	ERReply     chan []ProtoExtendSignature
-	ERFollowers *[]*SkipBlock
+	ER            *ProtoExtendRoster
+	ERReply       chan []ProtoExtendSignature
+	ERFollowers   *[]*SkipBlock
+	ERFollowerIDs []SkipBlockID
 
 	GU      *ProtoGetUpdate
 	GUReply chan *SkipBlock
@@ -66,7 +67,7 @@ func (p *Protocol) Start() error {
 func (p *Protocol) HandleExtendRoster(msg ProtoStructExtendRoster) error {
 	defer p.Done()
 
-	if !AuthSkipchain {
+	if AuthSkipchain == 0 {
 		sig, err := crypto.SignSchnorr(network.Suite, p.Private(), msg.Genesis)
 		if err != nil {
 			log.Error("couldn't sign genesis-block")
@@ -75,36 +76,46 @@ func (p *Protocol) HandleExtendRoster(msg ProtoStructExtendRoster) error {
 		return p.SendToParent(&ProtoExtendRosterReply{Signature: &sig})
 	}
 
-	if p.ERFollowers == nil {
-		return p.SendToParent(&ProtoExtendRosterReply{})
-	}
-
-	for i, sb := range *p.ERFollowers {
-		t := onet.NewRoster([]*network.ServerIdentity{p.ServerIdentity(), sb.Roster.List[0]}).GenerateBinaryTree()
-		pi, err := p.CreateProtocol(Name, t)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		pisc := pi.(*Protocol)
-		pisc.GU = &ProtoGetUpdate{SBID: sb.Hash}
-		if err := pi.Start(); err != nil {
-			log.Error(err)
-			continue
-		}
-		select {
-		case sbNew := <-pisc.GUReply:
-			if sbNew != nil {
-				(*p.ERFollowers)[i] = sbNew
+	if p.ERFollowers != nil {
+		for i, sb := range *p.ERFollowers {
+			t := onet.NewRoster([]*network.ServerIdentity{p.ServerIdentity(), sb.Roster.List[0]}).GenerateBinaryTree()
+			pi, err := p.CreateProtocol(Name, t)
+			if err != nil {
+				log.Error(err)
+				continue
 			}
-		case <-time.After(time.Second):
-			continue
+			pisc := pi.(*Protocol)
+			pisc.GU = &ProtoGetUpdate{SBID: sb.Hash}
+			if err := pi.Start(); err != nil {
+				log.Error(err)
+				continue
+			}
+			select {
+			case sbNew := <-pisc.GUReply:
+				if sbNew != nil {
+					(*p.ERFollowers)[i] = sbNew
+				}
+			case <-time.After(time.Second):
+				continue
+			}
+		}
+
+		for _, sb := range *p.ERFollowers {
+			for _, si := range sb.Roster.List {
+				if si.Equal(msg.ServerIdentity) {
+					sig, err := crypto.SignSchnorr(network.Suite, p.Private(), msg.Genesis)
+					if err != nil {
+						log.Error("couldn't sign genesis-block")
+						return p.SendToParent(&ProtoExtendRosterReply{})
+					}
+					return p.SendToParent(&ProtoExtendRosterReply{Signature: &sig})
+				}
+			}
 		}
 	}
-
-	for _, sb := range *p.ERFollowers {
-		for _, si := range sb.Roster.List {
-			if si.Equal(msg.ServerIdentity) {
+	if p.ERFollowerIDs != nil {
+		for _, id := range p.ERFollowerIDs {
+			if msg.Genesis.Equal(id) {
 				sig, err := crypto.SignSchnorr(network.Suite, p.Private(), msg.Genesis)
 				if err != nil {
 					log.Error("couldn't sign genesis-block")

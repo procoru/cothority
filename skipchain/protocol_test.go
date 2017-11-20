@@ -47,9 +47,9 @@ func TestGU(t *testing.T) {
 
 // TestER tests the ProtoExtendRoster message
 func TestER(t *testing.T) {
-	skipchain.AuthSkipchain = true
+	skipchain.AuthSkipchain = 1
 	defer func() {
-		skipchain.AuthSkipchain = false
+		skipchain.AuthSkipchain = 0
 	}()
 	nodes := []int{2, 5, 13}
 	for _, nbrNodes := range nodes {

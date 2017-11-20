@@ -366,9 +366,8 @@ func (bft *ProtocolBFTCoSi) handleChallengeCommit(msg challengeCommitChan) error
 		log.Lvl3(bft.Name(), "Verification of the signature failed:", err)
 		bft.signRefusal = true
 	}
-
 	// Check if we have no more than threshold failed nodes
-	if len(ch.Signature.Exceptions) >= int(bft.threshold) {
+	if len(bft.Tree().List())-len(ch.Signature.Exceptions) < int(bft.threshold) {
 		log.Lvlf3("%s: More than threshold (%d/%d) refused to sign - aborting.",
 			bft.Roster(), len(ch.Signature.Exceptions), len(bft.Roster().List))
 		bft.signRefusal = true
