@@ -19,19 +19,52 @@ main(){
 	# test Index
 	# test Html
 	# test Fetch
-	test Auth
+	# test AuthLink
+	test Friend
 	stopTest
 }
 
-testAuth(){
+testFriend(){
+	startCl
+	runCoBG 3
+	cat co1/public.toml > group1.toml
+	cat co[12]/public.toml > group12.toml
+	cat co[123]/public.toml > group123.toml
+	hosts=()
+	for h in 1 2 3; do
+		host[$h]="localhost:$(( 2000 + 2 * h ))"
+		runSc admin link -priv co$h/private.toml
+		runSc auth ${host[$h]} 1
+	done
+	setupGenesis group1.toml
+	testFail runSc skipchain add $ID group12.toml
+	testOK runSc admin follow -trust 0 ${host[2]} $ID
+	testOK runSc skipchain add $ID group12.toml
+
+	setupGenesis group1.toml
+	testFail runSc skipchain add $ID group12.toml
+	testFail runSc admin follow -search ${host[3]} $ID
+	testOK runSc admin follow -search ${host[2]} $ID
+	testOK runSc skipchain add $ID group12.toml
+	testFail runSc skipchain add $ID group123.toml
+	testFail runSc admin follow -lookup ${host[3]} ${host[2]} $ID
+	testOK runSc admin follow -lookup ${host[2]} ${host[3]} $ID
+	testOK runSc skipchain add $ID group123.toml
+}
+
+testAuthLink(){
 	startCl
 	setupGenesis
 	testOK [ -n "$ID" ]
-	testFail runSc admin auth true
+	ID=""
+	testFail runSc admin auth localhost:2002 1
+	testFail [ -n "$ID" ]
+	testOK runSc admin link -priv co1/private.toml
 	testOK runSc admin link -priv co2/private.toml
-	testOK runSc admin auth true
+	testOK runSc admin auth localhost:2004 1
+	testOK runSc admin auth localhost:2002 1
 	setupGenesis
-	testOK [ -z "$ID" ]
+	testOK [ -n "$ID" ]
 }
 
 testFetch(){
@@ -75,7 +108,7 @@ testAdd(){
 }
 
 setupGenesis(){
-	runGrepSed "Created new" "s/.* //" runSc sc create public.toml
+	runGrepSed "Created new" "s/.* //" runSc sc create ${1:-public.toml}
 	ID=$SED
 }
 

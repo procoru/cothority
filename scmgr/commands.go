@@ -29,9 +29,9 @@ func getCommands() []cli.Command {
 				},
 				{
 					Name:      "auth",
-					Usage:     "turn on or off authentication",
+					Usage:     "setting level of authentication",
 					Aliases:   []string{"a"},
-					ArgsUsage: "(true|false)",
+					ArgsUsage: "ip:port (0|1|2)",
 					Action:    adminAuth,
 				},
 				{

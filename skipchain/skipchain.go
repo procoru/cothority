@@ -360,6 +360,7 @@ func (s *Service) SettingAuthentication(auth *SettingAuthentication) (*EmptyRepl
 	if !s.verifySigs(msg, auth.Signature) {
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature or unknown signer")
 	}
+	log.Print("got signature of", s.Storage.Clients)
 	if auth.Authentication < 0 || auth.Authentication > 2 {
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "unknown Authentication option")
 	}

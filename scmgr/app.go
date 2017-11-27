@@ -4,7 +4,9 @@
 package main
 
 import (
+	"net"
 	"os"
+	"strconv"
 
 	"gopkg.in/dedis/onet.v1/app"
 
@@ -27,7 +29,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/dedis/cothority/skipchain"
 	"gopkg.in/dedis/crypto.v0/abstract"
-	"gopkg.in/dedis/crypto.v0/random"
 	"gopkg.in/dedis/onet.v1"
 	"gopkg.in/dedis/onet.v1/crypto"
 	"gopkg.in/dedis/onet.v1/log"
@@ -36,8 +37,13 @@ import (
 )
 
 type config struct {
-	Sbm     *skipchain.SkipBlockMap
+	Sbm  *skipchain.SkipBlockMap
+	Link map[string]*link
+}
+
+type link struct {
 	Private abstract.Scalar
+	Address network.Address
 }
 
 type html struct {
@@ -74,34 +80,87 @@ func adminLink(c *cli.Context) error {
 	}
 	private := c.String("private")
 	if private == "" {
-		return errors.New("give either pin or private key")
+		return errors.New("give either pin or private.toml of conode")
 	}
 	var remote struct {
 		Private string
+		Public  string
 		Address network.Address
 	}
 	_, err := toml.DecodeFile(private, &remote)
 	if err != nil {
-		return err
+		return errors.New("error while reading private.toml: " + err.Error())
 	}
-	pkey, err := crypto.StringHexToScalar(network.Suite, private)
+	pkey, err := crypto.StringHexToScalar(network.Suite, remote.Private)
 	if err != nil {
 		return errors.New("couldn't decode private key: " + err.Error())
 	}
+	pubkey, err := crypto.StringHexToPoint(network.Suite, remote.Public)
+	if err != nil {
+		return errors.New("couldn't decode public key: " + err.Error())
+	}
 	cfg := getConfigOrFail(c)
-	cfg.Private = network.Suite.NewKey(random.Stream)
-	si := network.NewServerIdentity(nil, remote.Address)
-	skipchain.NewClient().CreateLinkPrivate(si, pkey, network.Suite.Point().Mul(nil, cfg.Private))
+	si := network.NewServerIdentity(pubkey, remote.Address)
+	cfg.Link[si.Public.String()] = &link{
+		Private: pkey,
+		Address: remote.Address,
+	}
+	cerr := skipchain.NewClient().CreateLinkPrivate(si, pkey, network.Suite.Point().Mul(nil, pkey))
+	if cerr != nil {
+		log.Error(cerr)
+		return cerr
+	}
+	log.Lvl1("Correctly linked with", remote.Address)
 	return cfg.save(c)
 }
 
-func adminAuth(c *cli.Context) error     { return nil }
+func adminAuth(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return errors.New("give the (public_hex|IP:Port) and level as argument")
+	}
+	lvl, err := strconv.Atoi(c.Args().Get(1))
+	if err != nil {
+		return err
+	}
+	cfg := getConfigOrFail(c)
+	if len(cfg.Link) == 0 {
+		return errors.New("no link yet")
+	}
+	publicOrIp := c.Args().First()
+	// Check if it's a public key and if we can find it
+	other := cfg.Link[publicOrIp]
+	if other == nil {
+		// Else search for the ip:port
+		host, port, err := net.SplitHostPort(publicOrIp)
+		if err != nil {
+			return errors.New("invalid host:port option: " + err.Error())
+		}
+		resolved, err := net.ResolveIPAddr("ip", host)
+		if err != nil {
+			return errors.New("invalid host: " + err.Error())
+		}
+		ipPort := net.JoinHostPort(resolved.String(), port)
+		for _, o := range cfg.Link {
+			if o.Address == network.NewTCPAddress(ipPort) {
+				other = o
+				break
+			}
+		}
+	}
+	if other == nil {
+		return errors.New("didn't find host with ip or public key: " + publicOrIp)
+	}
+	si := &network.ServerIdentity{Address: other.Address}
+	return skipchain.NewClient().SettingAuthentication(si, other.Private, lvl)
+}
+
 func adminFollow(c *cli.Context) error   { return nil }
 func adminUnfollow(c *cli.Context) error { return nil }
 func adminList(c *cli.Context) error     { return nil }
 
 // Creates a new skipchain with the given roster
 func scCreate(c *cli.Context) error {
+	cfg := getConfigOrFail(c)
 	log.Info("Create skipchain")
 	group := readGroup(c, 0)
 	client := skipchain.NewClient()
@@ -112,13 +171,18 @@ func scCreate(c *cli.Context) error {
 		}
 		data = []byte(address)
 	}
-	sb, cerr := client.CreateGenesis(group.Roster, c.Int("base"), c.Int("height"),
-		skipchain.VerificationStandard, &html{data}, nil)
+	var priv abstract.Scalar
+	log.Printf("%#v", group.Roster.List)
+	remote, found := cfg.Link[group.Roster.List[0].Public.String()]
+	if found {
+		priv = remote.Private
+	}
+	sb, cerr := client.CreateGenesisSignature(group.Roster, c.Int("base"), c.Int("height"),
+		skipchain.VerificationStandard, &html{data}, nil, priv)
 	if cerr != nil {
 		log.Fatal("while creating the genesis-roster:", cerr)
 	}
 	log.Infof("Created new skipblock with id %x", sb.Hash)
-	cfg := getConfigOrFail(c)
 	cfg.Sbm.Store(sb)
 	log.ErrFatal(cfg.save(c))
 	return nil
@@ -449,7 +513,9 @@ func readGroup(c *cli.Context, pos int) *app.Group {
 
 func getConfigOrFail(c *cli.Context) *config {
 	cfg, err := loadConfig(c)
-	log.ErrFatal(err)
+	if err != nil {
+		log.Fatal("couldn't read config: " + err.Error())
+	}
 	return cfg
 }
 
@@ -458,7 +524,10 @@ func loadConfig(c *cli.Context) (*config, error) {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &config{Sbm: skipchain.NewSkipBlockMap()}, nil
+			return &config{
+				Sbm:  skipchain.NewSkipBlockMap(),
+				Link: map[string]*link{},
+			}, nil
 		}
 		return nil, fmt.Errorf("Could not open file %s", path)
 	}
@@ -469,6 +538,14 @@ func loadConfig(c *cli.Context) (*config, error) {
 	_, cfg, err := network.Unmarshal(f)
 	if err != nil {
 		return nil, err
+	}
+	if len(cfg.(*config).Link) == 0 {
+		cfg.(*config).Link = map[string]*link{}
+	}
+	log.Printf("%#v", cfg.(*config).Sbm)
+	if cfg.(*config).Sbm == nil ||
+		len(cfg.(*config).Sbm.SkipBlocks) == 0 {
+		cfg.(*config).Sbm = skipchain.NewSkipBlockMap()
 	}
 	return cfg.(*config), err
 }

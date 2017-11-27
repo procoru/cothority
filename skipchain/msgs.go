@@ -55,6 +55,7 @@ func init() {
 		&ProtoGetUpdate{},
 		&ProtoBlockReply{},
 	)
+	network.DumpTypes()
 }
 
 // This file holds all messages that can be sent to the SkipChain,
