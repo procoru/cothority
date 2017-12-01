@@ -9,9 +9,11 @@ import (
 
 	"sync"
 
-	"github.com/dedis/onet"
-	"github.com/dedis/onet/log"
-	"github.com/dedis/onet/network"
+	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/config"
+	"gopkg.in/dedis/onet.v1"
+	"gopkg.in/dedis/onet.v1/log"
+	"gopkg.in/dedis/onet.v1/network"
 )
 
 func init() {
@@ -19,7 +21,7 @@ func init() {
 }
 
 func TestClient_CreateGenesis(t *testing.T) {
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, roster, _ := l.GenTree(3, true)
 	defer l.CloseAll()
 	c := newTestClient(l)
@@ -37,7 +39,7 @@ func TestClient_CreateGenesis(t *testing.T) {
 }
 
 func TestClient_CreateRootControl(t *testing.T) {
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, roster, _ := l.GenTree(3, true)
 	defer l.CloseAll()
 	c := newTestClient(l)
@@ -49,7 +51,7 @@ func TestClient_GetUpdateChain(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Long run not good for Travis")
 	}
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, el, _ := l.GenTree(5, true)
 	defer l.CloseAll()
 
@@ -73,7 +75,7 @@ func TestClient_GetUpdateChain(t *testing.T) {
 }
 
 func TestClient_CreateRootInter(t *testing.T) {
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, el, _ := l.GenTree(5, true)
 	defer l.CloseAll()
 
@@ -98,7 +100,7 @@ func TestClient_CreateRootInter(t *testing.T) {
 
 func TestClient_StoreSkipBlock(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, el, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
@@ -144,7 +146,7 @@ func TestClient_StoreSkipBlock(t *testing.T) {
 
 func TestClient_GetAllSkipchains(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, el, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
@@ -160,6 +162,7 @@ func TestClient_GetAllSkipchains(t *testing.T) {
 	sb2id := sb2.SkipChainID()
 
 	sbs, cerr := c.GetAllSkipchains(el.List[0])
+	log.ErrFatal(cerr)
 	require.Equal(t, 2, len(sbs.SkipChains))
 	sbs1id := sbs.SkipChains[0].SkipChainID()
 	sbs2id := sbs.SkipChains[1].SkipChainID()
@@ -170,7 +173,7 @@ func TestClient_GetAllSkipchains(t *testing.T) {
 
 func TestClient_GetSingleBlockByIndex(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest(tSuite)
+	l := onet.NewTCPTest()
 	_, roster, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
@@ -180,14 +183,131 @@ func TestClient_GetSingleBlockByIndex(t *testing.T) {
 	log.ErrFatal(cerr)
 	reply2, cerr := c.StoreSkipBlock(sb1, roster, nil)
 	log.ErrFatal(cerr)
-	search, cerr := c.GetSingleBlockByIndex(roster, sb1.Hash, -1)
+	_, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, -1)
 	require.NotNil(t, cerr)
-	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 0)
+	search, cerr := c.GetSingleBlockByIndex(roster, sb1.Hash, 0)
+	log.ErrFatal(cerr)
 	require.True(t, sb1.Equal(search))
 	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 1)
+	log.ErrFatal(cerr)
 	require.True(t, reply2.Latest.Equal(search))
-	search, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 2)
+	_, cerr = c.GetSingleBlockByIndex(roster, sb1.Hash, 2)
 	require.NotNil(t, cerr)
+}
+
+func TestClient_CreateLinkPrivate(t *testing.T) {
+	ls := linked(1)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	cerr := ls.client.CreateLinkPrivate(ls.server.ServerIdentity, ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+}
+
+func TestClient_SettingAuthentication(t *testing.T) {
+	ls := linked(1)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	cerr := ls.client.CreateLinkPrivate(ls.si, ls.servPriv, ls.pub)
+	require.Nil(t, cerr)
+	require.Equal(t, 0, AuthSkipchain)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, 1)
+	log.ErrFatal(cerr)
+	require.Equal(t, 1, AuthSkipchain)
+}
+
+func TestClient_Follow(t *testing.T) {
+	ls := linked(3)
+	defer ls.local.CloseAll()
+	require.Equal(t, 0, len(ls.service.Storage.Clients))
+	priv0 := ls.servPriv
+	cerr := ls.client.CreateLinkPrivate(ls.si, priv0, ls.pub)
+	require.Nil(t, cerr)
+	priv1 := ls.local.GetPrivate(ls.servers[1])
+	cerr = ls.client.CreateLinkPrivate(ls.roster.List[1], priv1, ls.servers[1].ServerIdentity.Public)
+	require.Nil(t, cerr)
+	priv2 := ls.local.GetPrivate(ls.servers[2])
+	cerr = ls.client.CreateLinkPrivate(ls.roster.List[2], priv2, ls.servers[2].ServerIdentity.Public)
+	require.Nil(t, cerr)
+	cerr = ls.client.SettingAuthentication(ls.si, ls.priv, 1)
+	require.Nil(t, cerr)
+	defer func() {
+		AuthSkipchain = 0
+	}()
+	log.Lvl1(ls.roster)
+
+	// Verify that server1 doesn't allow a new skipchain using server0 and server1
+	roster01 := onet.NewRoster(ls.roster.List[0:2])
+	_, cerr = ls.client.CreateGenesis(roster01, 1, 1, VerificationNone, nil, nil)
+	require.NotNil(t, cerr)
+
+	roster0 := onet.NewRoster([]*network.ServerIdentity{ls.si})
+	genesis, cerr := ls.client.CreateGenesisSignature(roster0, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+
+	// Now server1 follows skipchain from server0, so it should allow a new skipblock,
+	// but not a new skipchain
+	log.Lvl1("(0) Following skipchain-id only")
+	cerr = ls.client.AddFollow(ls.roster.List[1], priv1, genesis.SkipChainID(), 0, "")
+	require.Nil(t, cerr)
+	block1, cerr := ls.client.StoreSkipBlockSignature(genesis, roster01, nil, priv0)
+	require.Nil(t, cerr)
+	genesis1, cerr := ls.client.CreateGenesisSignature(roster01, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(genesis1, roster01, nil, priv0)
+	require.NotNil(t, cerr)
+
+	// Now server1 follows the skipchain as a 'roster-inclusion' skipchain, so it
+	// should also allow creation of a new skipchain
+	log.Lvl1("(1) Following roster of skipchain")
+	cerr = ls.client.AddFollow(ls.roster.List[1], priv1, genesis.SkipChainID(), 1, "")
+	require.Nil(t, cerr)
+	block2, cerr := ls.client.StoreSkipBlockSignature(block1.Latest, roster01, nil, priv0)
+	require.Nil(t, cerr)
+	genesis2, cerr := ls.client.CreateGenesisSignature(roster01, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(genesis2, roster01, nil, priv0)
+	require.Nil(t, cerr)
+
+	// Finally test with third server
+	log.Lvl1("(1) Following skipchain-id only on server2")
+	cerr = ls.client.AddFollow(ls.roster.List[2], priv2, genesis.SkipChainID(), 1, "")
+	require.NotNil(t, cerr)
+	log.Lvl1("(2) Following skipchain-id only on server2")
+	cerr = ls.client.AddFollow(ls.roster.List[2], priv2, genesis.SkipChainID(), 2, ls.server.Address().NetworkAddress())
+	require.Nil(t, cerr)
+	_, cerr = ls.client.StoreSkipBlockSignature(block2.Latest, ls.roster, nil, priv0)
+	require.Nil(t, cerr)
+	_, cerr = ls.client.CreateGenesisSignature(ls.roster, 1, 1, VerificationNone, nil, nil, priv0)
+	require.Nil(t, cerr)
+}
+
+type linkStruct struct {
+	local    *onet.LocalTest
+	roster   *onet.Roster
+	servers  []*onet.Server
+	server   *onet.Server
+	service  *Service
+	si       *network.ServerIdentity
+	servPriv abstract.Scalar
+	priv     abstract.Scalar
+	pub      abstract.Point
+	client   *Client
+}
+
+func linked(nbr int) *linkStruct {
+	kp := config.NewKeyPair(network.Suite)
+	ls := &linkStruct{
+		local: onet.NewTCPTest(),
+		priv:  kp.Secret,
+		pub:   kp.Public,
+	}
+	ls.servers, ls.roster, _ = ls.local.GenTree(nbr, true)
+	ls.server = ls.servers[0]
+	ls.si = ls.server.ServerIdentity
+	ls.servPriv = ls.local.GetPrivate(ls.server)
+	ls.service = ls.local.GetServices(ls.servers, skipchainSID)[0].(*Service)
+	ls.client = newTestClient(ls.local)
+	return ls
 }
 
 func newTestClient(l *onet.LocalTest) *Client {

@@ -1,6 +1,6 @@
 package skipchain
 
-import "github.com/dedis/onet/log"
+import "gopkg.in/dedis/onet.v1/log"
 
 /*
 This file holds all verification-functions for the skipchain.
@@ -43,7 +43,7 @@ func (s *Service) verifyFuncData(newID []byte, newSB *SkipBlock) bool {
 		log.Lvl3("No parent skipblock to verify against")
 		return false
 	}
-	sbParent := s.Sbm.GetByID(newSB.ParentBlockID)
+	sbParent := s.Storage.Sbm.GetByID(newSB.ParentBlockID)
 	if sbParent == nil {
 		log.Lvl3("Parent skipblock doesn't exist")
 		return false

@@ -4,36 +4,42 @@
 package main
 
 import (
-	"os"
-
-	"github.com/dedis/cothority"
-	"github.com/dedis/onet/app"
-
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
-
-	"errors"
-
-	"encoding/hex"
-
+	"net"
+	"os"
 	"path"
-
-	"bytes"
-	"sort"
-
-	"encoding/json"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+	"github.com/dedis/cothority"
 	"github.com/dedis/cothority/skipchain"
+	"github.com/dedis/kyber"
 	"github.com/dedis/onet"
+	"github.com/dedis/onet/app"
 	"github.com/dedis/onet/log"
 	"github.com/dedis/onet/network"
 	"gopkg.in/urfave/cli.v1"
 )
 
 type config struct {
+	// Sbm holds all known skipblocks
 	Sbm *skipchain.SkipBlockMap
+	// Link is a map of public keys to a link-structure
+	Link map[string]*link
+}
+
+type link struct {
+	Private kyber.Scalar
+	Address network.Address
+	Conode  *network.ServerIdentity
 }
 
 type html struct {
@@ -46,97 +52,8 @@ func main() {
 	cliApp := cli.NewApp()
 	cliApp.Name = "scmgr"
 	cliApp.Usage = "Create, modify and query skipchains"
-	cliApp.Version = "0.1"
-	groupsDef := "the group-definition-file"
-	cliApp.Commands = []cli.Command{
-		{
-			Name:      "create",
-			Usage:     "make a new skipchain",
-			Aliases:   []string{"c"},
-			ArgsUsage: groupsDef,
-			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "base, b",
-					Value: 2,
-					Usage: "base for skipchains",
-				},
-				cli.IntFlag{
-					Name:  "height, he",
-					Value: 2,
-					Usage: "maximum height of skipchain",
-				},
-				cli.StringFlag{
-					Name:  "html",
-					Usage: "URL of html-skipchain",
-				},
-			},
-			Action: create,
-		},
-		{
-			Name:      "join",
-			Usage:     "join a skipchain and store it locally",
-			Aliases:   []string{"j"},
-			ArgsUsage: groupsDef + " skipchain-id",
-			Action:    join,
-		},
-		{
-			Name:      "add",
-			Usage:     "add a new roster to a skipchain",
-			Aliases:   []string{"a"},
-			ArgsUsage: "skipchain-id " + groupsDef,
-			Action:    add,
-		},
-		{
-			Name:      "addWeb",
-			Usage:     "add a web-site to a skipchain",
-			Aliases:   []string{"a"},
-			ArgsUsage: "skipchain-id page.html",
-			Action:    addWeb,
-		},
-		{
-			Name:      "update",
-			Usage:     "get latest valid block",
-			Aliases:   []string{"u"},
-			ArgsUsage: "skipchain-id",
-			Action:    update,
-		},
-		{
-			Name:  "list",
-			Usage: "handle list of skipblocks",
-			Subcommands: []cli.Command{
-				{
-					Name:    "known",
-					Aliases: []string{"k"},
-					Usage:   "lists all known skipblocks",
-					Flags: []cli.Flag{
-						cli.BoolFlag{
-							Name:  "long, l",
-							Usage: "give long id of blocks",
-						},
-					},
-					Action: lsKnown,
-				},
-				{
-					Name:      "index",
-					Usage:     "create index-files for all known skipchains",
-					ArgsUsage: "output path",
-					Action:    lsIndex,
-				},
-				{
-					Name:      "fetch",
-					Usage:     "ask all known conodes for skipchains",
-					ArgsUsage: "[group-file]",
-					Flags: []cli.Flag{
-						cli.BoolFlag{
-							Name:  "recursive, r",
-							Usage: "recurse into other conodes",
-						},
-					},
-					Action: lsFetch,
-				},
-			},
-		},
-	}
+	cliApp.Version = "0.2"
+	cliApp.Commands = getCommands()
 	cliApp.Flags = []cli.Flag{
 		app.FlagDebug,
 		cli.StringFlag{
@@ -149,11 +66,125 @@ func main() {
 		log.SetDebugVisible(c.Int("debug"))
 		return nil
 	}
-	cliApp.Run(os.Args)
+	log.ErrFatal(cliApp.Run(os.Args))
 }
 
+// adminLink tries to store our public key in the conode
+func adminLink(c *cli.Context) error {
+	if pin := c.String("pin"); pin != "" {
+		return errors.New("pin entry not implemented yet")
+	}
+	private := c.String("private")
+	if private == "" {
+		return errors.New("give either pin or private.toml of conode")
+	}
+	var remote struct {
+		Private string
+		Public  string
+		Address network.Address
+	}
+	_, err := toml.DecodeFile(private, &remote)
+	if err != nil {
+		return errors.New("error while reading private.toml: " + err.Error())
+	}
+	pkey, err := app.StringHexToScalar(skipchain.Suite, remote.Private)
+	if err != nil {
+		return errors.New("couldn't decode private key: " + err.Error())
+	}
+	pubkey, err := app.StringHexToPoint(skipchain.Suite, remote.Public)
+	if err != nil {
+		return errors.New("couldn't decode public key: " + err.Error())
+	}
+	cfg := getConfigOrFail(c)
+	si := network.NewServerIdentity(pubkey, remote.Address)
+	cfg.Link[si.Public.String()] = &link{
+		Private: pkey,
+		Address: remote.Address,
+		Conode:  si,
+	}
+	cerr := skipchain.NewClient().CreateLinkPrivate(si, pkey, skipchain.Suite.Point().Mul(nil, pkey))
+	if cerr != nil {
+		log.Error(cerr)
+		return cerr
+	}
+	log.Lvl1("Correctly linked with", remote.Address)
+	return cfg.save(c)
+}
+
+func adminAuth(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return errors.New("give the (public_hex|IP:Port) and level as argument")
+	}
+	lvl, err := strconv.Atoi(c.Args().Get(1))
+	if err != nil {
+		return err
+	}
+	cfg := getConfigOrFail(c)
+	if len(cfg.Link) == 0 {
+		return errors.New("no link yet")
+	}
+	publicOrIP := c.Args().First()
+	// Check if it's a public key and if we can find it
+	other := cfg.Link[publicOrIP]
+	if other == nil {
+		var err error
+		other, err = findLinkFromAddress(cfg, publicOrIP)
+		if err != nil {
+			return errors.New("couldn't parse address: " + err.Error())
+		}
+	}
+	if other == nil {
+		return errors.New("didn't find host with ip or public key: " + publicOrIP)
+	}
+	return skipchain.NewClient().SettingAuthentication(other.Conode, other.Private, lvl)
+}
+
+func adminFollow(c *cli.Context) error {
+	cfg := getConfigOrFail(c)
+	if c.NArg() < 2 {
+		return errors.New("give at least the node with whom to communicate and the skipchain-id")
+	}
+	link, err := findLinkFromAddress(cfg, c.Args().First())
+	if err != nil {
+		return errors.New("couldn't parse node-address or not linked yet: " + err.Error())
+	}
+	scid, err := hex.DecodeString(c.Args().Get(c.NArg() - 1))
+	if err != nil {
+		return errors.New("invalid skipchain-id: " + err.Error())
+	}
+	client := skipchain.NewClient()
+	switch {
+	case c.Bool("chain"):
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowChain, "")
+		if cerr != nil {
+			return errors.New("couldn't add this block as chain-follower: " + cerr.Error())
+		}
+	case c.Bool("search"):
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowSearch, "")
+		if cerr != nil {
+			return errors.New("couldn't find this block in search: " + cerr.Error())
+		}
+	case c.Bool("lookup"):
+		if c.NArg() != 3 {
+			return errors.New("please give 3 arguments: address_conode address_serach skipchain-id")
+		}
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowLookup, c.Args().Get(1))
+		if cerr != nil {
+			return errors.New("couldn't lookup this block: " + cerr.Error())
+		}
+	default:
+		return errors.New("please give one of (chain|serach|lookup) as flag")
+	}
+
+	return nil
+}
+
+func adminUnfollow(c *cli.Context) error { return nil }
+func adminList(c *cli.Context) error     { return nil }
+
 // Creates a new skipchain with the given roster
-func create(c *cli.Context) error {
+func scCreate(c *cli.Context) error {
+	cfg := getConfigOrFail(c)
 	log.Info("Create skipchain")
 	group := readGroup(c, 0)
 	client := skipchain.NewClient()
@@ -164,20 +195,24 @@ func create(c *cli.Context) error {
 		}
 		data = []byte(address)
 	}
-	sb, cerr := client.CreateGenesis(group.Roster, c.Int("base"), c.Int("height"),
-		skipchain.VerificationStandard, &html{data}, nil)
+	var priv kyber.Scalar
+	remote, found := cfg.Link[group.Roster.List[0].Public.String()]
+	if found {
+		priv = remote.Private
+	}
+	sb, cerr := client.CreateGenesisSignature(group.Roster, c.Int("base"), c.Int("height"),
+		skipchain.VerificationStandard, &html{data}, nil, priv)
 	if cerr != nil {
 		log.Fatal("while creating the genesis-roster:", cerr)
 	}
 	log.Infof("Created new skipblock with id %x", sb.Hash)
-	cfg := getConfigOrFail(c)
 	cfg.Sbm.Store(sb)
 	log.ErrFatal(cfg.save(c))
 	return nil
 }
 
 // Joins a given skipchain
-func join(c *cli.Context) error {
+func lsJoin(c *cli.Context) error {
 	log.Info("Joining skipchain")
 	if c.NArg() < 2 {
 		return errors.New("Please give group-file and id of known block")
@@ -190,6 +225,7 @@ func join(c *cli.Context) error {
 	}
 	gcr, cerr := client.GetUpdateChain(group.Roster, hash)
 	if cerr != nil {
+		log.Error(cerr)
 		return cerr
 	}
 	latest := gcr.Update[len(gcr.Update)-1]
@@ -204,8 +240,8 @@ func join(c *cli.Context) error {
 	return nil
 }
 
-// Returns the number of calls.
-func add(c *cli.Context) error {
+// Proposes a new block to the leader for appending to the skipchain.
+func scAdd(c *cli.Context) error {
 	log.Info("Adding a block with a new group")
 	if c.NArg() < 2 {
 		return errors.New("Please give group-file and id to add")
@@ -222,7 +258,13 @@ func add(c *cli.Context) error {
 		return cerr
 	}
 	latest := guc.Update[len(guc.Update)-1]
-	ssbr, cerr := client.StoreSkipBlock(latest, group.Roster, nil)
+	var priv kyber.Scalar
+	link := cfg.Link[group.Roster.List[0].Public.String()]
+	if link != nil {
+		log.Lvl1("Found link-entry for", group.Roster.List[0].Address)
+		priv = link.Private
+	}
+	ssbr, cerr := client.StoreSkipBlockSignature(latest, group.Roster, nil, priv)
 	if cerr != nil {
 		return errors.New("while storing block: " + cerr.Error())
 	}
@@ -233,7 +275,7 @@ func add(c *cli.Context) error {
 }
 
 // Adds a block with the page inside.
-func addWeb(c *cli.Context) error {
+func scAddWeb(c *cli.Context) error {
 	log.Info("Adding a block with a page")
 	if c.NArg() < 2 {
 		log.Fatal("Please give skipchain-id and html-file to save")
@@ -266,7 +308,7 @@ func addWeb(c *cli.Context) error {
 }
 
 // Updates a block to the latest block
-func update(c *cli.Context) error {
+func scUpdate(c *cli.Context) error {
 	log.Info("Updating block")
 	if c.NArg() < 1 {
 		return errors.New("please give block-id to update")
@@ -500,7 +542,9 @@ func readGroup(c *cli.Context, pos int) *app.Group {
 
 func getConfigOrFail(c *cli.Context) *config {
 	cfg, err := loadConfig(c)
-	log.ErrFatal(err)
+	if err != nil {
+		log.Fatal("couldn't read config: " + err.Error())
+	}
 	return cfg
 }
 
@@ -509,7 +553,10 @@ func loadConfig(c *cli.Context) (*config, error) {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &config{Sbm: skipchain.NewSkipBlockMap()}, nil
+			return &config{
+				Sbm:  skipchain.NewSkipBlockMap(),
+				Link: map[string]*link{},
+			}, nil
 		}
 		return nil, fmt.Errorf("Could not open file %s", path)
 	}
@@ -520,6 +567,13 @@ func loadConfig(c *cli.Context) (*config, error) {
 	_, cfg, err := network.Unmarshal(f, cothority.Suite)
 	if err != nil {
 		return nil, err
+	}
+	if len(cfg.(*config).Link) == 0 {
+		cfg.(*config).Link = map[string]*link{}
+	}
+	if cfg.(*config).Sbm == nil ||
+		len(cfg.(*config).Sbm.SkipBlocks) == 0 {
+		cfg.(*config).Sbm = skipchain.NewSkipBlockMap()
 	}
 	return cfg.(*config), err
 }
@@ -566,4 +620,25 @@ func updateNewSIs(roster *onet.Roster, sisNew []*network.ServerIdentity,
 		}
 	}
 	return sisNew
+}
+
+func findLinkFromAddress(cfg *config, address string) (*link, error) {
+	var l *link
+	// Else search for the ip:port
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, errors.New("invalid host:port option: " + err.Error())
+	}
+	resolved, err := net.ResolveIPAddr("ip", host)
+	if err != nil {
+		return nil, errors.New("invalid host: " + err.Error())
+	}
+	ipPort := net.JoinHostPort(resolved.String(), port)
+	for _, o := range cfg.Link {
+		if o.Address == network.NewTCPAddress(ipPort) {
+			l = o
+			break
+		}
+	}
+	return l, nil
 }
