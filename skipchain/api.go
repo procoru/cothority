@@ -263,6 +263,10 @@ func (c *Client) SettingAuthentication(si *network.ServerIdentity, clientPriv ab
 
 // AddFollow gives a skipchain-id to the conode that should be used to allow/disallow
 // new blocks. Only if SettingAuthentication(true) has been called is this active.
+// The searchPolicy is one of: 0 - only allow this skipchain to add new blocks.
+// 1 - search if it can find that skipchain-id and then add the whole roster to
+// the list of allowed nodes to request a new skipblock. 2 - lookup the skipchain-id
+// given the ip and port of the conode where it is available.
 func (c *Client) AddFollow(si *network.ServerIdentity, clientPriv abstract.Scalar,
 	scid SkipBlockID, searchPolicy int, conode string) onet.ClientError {
 	req := &AddFollow{

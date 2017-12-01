@@ -37,13 +37,16 @@ import (
 )
 
 type config struct {
-	Sbm  *skipchain.SkipBlockMap
+	// Sbm holds all known skipblocks
+	Sbm *skipchain.SkipBlockMap
+	// Link is a map of public keys to a link-structure
 	Link map[string]*link
 }
 
 type link struct {
 	Private abstract.Scalar
 	Address network.Address
+	Conode  *network.ServerIdentity
 }
 
 type html struct {
@@ -104,6 +107,7 @@ func adminLink(c *cli.Context) error {
 	cfg.Link[si.Public.String()] = &link{
 		Private: pkey,
 		Address: remote.Address,
+		Conode:  si,
 	}
 	cerr := skipchain.NewClient().CreateLinkPrivate(si, pkey, network.Suite.Point().Mul(nil, pkey))
 	if cerr != nil {
@@ -130,31 +134,58 @@ func adminAuth(c *cli.Context) error {
 	// Check if it's a public key and if we can find it
 	other := cfg.Link[publicOrIp]
 	if other == nil {
-		// Else search for the ip:port
-		host, port, err := net.SplitHostPort(publicOrIp)
+		var err error
+		other, err = findLinkFromAddress(cfg, publicOrIp)
 		if err != nil {
-			return errors.New("invalid host:port option: " + err.Error())
-		}
-		resolved, err := net.ResolveIPAddr("ip", host)
-		if err != nil {
-			return errors.New("invalid host: " + err.Error())
-		}
-		ipPort := net.JoinHostPort(resolved.String(), port)
-		for _, o := range cfg.Link {
-			if o.Address == network.NewTCPAddress(ipPort) {
-				other = o
-				break
-			}
+			return errors.New("couldn't parse address: " + err.Error())
 		}
 	}
 	if other == nil {
 		return errors.New("didn't find host with ip or public key: " + publicOrIp)
 	}
-	si := &network.ServerIdentity{Address: other.Address}
-	return skipchain.NewClient().SettingAuthentication(si, other.Private, lvl)
+	return skipchain.NewClient().SettingAuthentication(other.Conode, other.Private, lvl)
 }
 
-func adminFollow(c *cli.Context) error   { return nil }
+func adminFollow(c *cli.Context) error {
+	cfg := getConfigOrFail(c)
+	if c.NArg() < 2 {
+		return errors.New("give at least the node with whom to communicate and the skipchain-id")
+	}
+	link, err := findLinkFromAddress(cfg, c.Args().First())
+	if err != nil {
+		return errors.New("couldn't parse node-address or not linked yet: " + err.Error())
+	}
+	scid, err := hex.DecodeString(c.Args().Get(c.NArg() - 1))
+	if err != nil {
+		return errors.New("invalid skipchain-id: " + err.Error())
+	}
+	client := skipchain.NewClient()
+	switch {
+	case c.Bool("chain"):
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowChain, "")
+		if cerr != nil {
+			return errors.New("couldn't add this block as chain-follower: " + cerr.Error())
+		}
+	case c.Bool("search"):
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowSearch, "")
+		if cerr != nil {
+			return errors.New("couldn't find this block in search: " + cerr.Error())
+		}
+	case c.Bool("lookup"):
+		if c.NArg() != 3 {
+			return errors.New("please give 3 arguments: address_conode address_serach skipchain-id")
+		}
+		cerr := client.AddFollow(link.Conode, link.Private, scid, skipchain.FollowLookup, c.Args().Get(1))
+		if cerr != nil {
+			return errors.New("couldn't lookup this block: " + cerr.Error())
+		}
+	default:
+		return errors.New("please give one of (chain|serach|lookup) as flag")
+	}
+
+	return nil
+}
+
 func adminUnfollow(c *cli.Context) error { return nil }
 func adminList(c *cli.Context) error     { return nil }
 
@@ -172,7 +203,6 @@ func scCreate(c *cli.Context) error {
 		data = []byte(address)
 	}
 	var priv abstract.Scalar
-	log.Printf("%#v", group.Roster.List)
 	remote, found := cfg.Link[group.Roster.List[0].Public.String()]
 	if found {
 		priv = remote.Private
@@ -217,7 +247,7 @@ func lsJoin(c *cli.Context) error {
 	return nil
 }
 
-// Returns the number of calls.
+// Proposes a new block to the leader for appending to the skipchain.
 func scAdd(c *cli.Context) error {
 	log.Info("Adding a block with a new group")
 	if c.NArg() < 2 {
@@ -235,7 +265,13 @@ func scAdd(c *cli.Context) error {
 		return cerr
 	}
 	latest := guc.Update[len(guc.Update)-1]
-	ssbr, cerr := client.StoreSkipBlock(latest, group.Roster, nil)
+	var priv abstract.Scalar
+	link := cfg.Link[group.Roster.List[0].Public.String()]
+	if link != nil {
+		log.Lvl1("Found link-entry for", group.Roster.List[0].Address)
+		priv = link.Private
+	}
+	ssbr, cerr := client.StoreSkipBlockSignature(latest, group.Roster, nil, priv)
 	if cerr != nil {
 		return errors.New("while storing block: " + cerr.Error())
 	}
@@ -542,7 +578,6 @@ func loadConfig(c *cli.Context) (*config, error) {
 	if len(cfg.(*config).Link) == 0 {
 		cfg.(*config).Link = map[string]*link{}
 	}
-	log.Printf("%#v", cfg.(*config).Sbm)
 	if cfg.(*config).Sbm == nil ||
 		len(cfg.(*config).Sbm.SkipBlocks) == 0 {
 		cfg.(*config).Sbm = skipchain.NewSkipBlockMap()
@@ -592,4 +627,25 @@ func updateNewSIs(roster *onet.Roster, sisNew []*network.ServerIdentity,
 		}
 	}
 	return sisNew
+}
+
+func findLinkFromAddress(cfg *config, address string) (*link, error) {
+	var l *link
+	// Else search for the ip:port
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, errors.New("invalid host:port option: " + err.Error())
+	}
+	resolved, err := net.ResolveIPAddr("ip", host)
+	if err != nil {
+		return nil, errors.New("invalid host: " + err.Error())
+	}
+	ipPort := net.JoinHostPort(resolved.String(), port)
+	for _, o := range cfg.Link {
+		if o.Address == network.NewTCPAddress(ipPort) {
+			l = o
+			break
+		}
+	}
+	return l, nil
 }

@@ -51,11 +51,11 @@ func init() {
 		&Service{},
 		// - Protocol messages
 		&ProtoExtendSignature{},
+		&ProtoExtendRoster{},
 		&ProtoExtendRosterReply{},
 		&ProtoGetUpdate{},
 		&ProtoBlockReply{},
 	)
-	network.DumpTypes()
 }
 
 // This file holds all messages that can be sent to the SkipChain,
@@ -157,10 +157,17 @@ type GetBlockReply struct {
 	SkipBlock *SkipBlock
 }
 
-// Protocol messages
-
 // Name can be used to reference this protocol.
 const Name = "sccomm"
+
+// Constants for following
+const (
+	FollowChain = iota
+	FollowSearch
+	FollowLookup
+)
+
+// Protocol messages
 
 // ProtoExtendSignature can be used as proof that a node accepted to be included
 // in a new roster.

@@ -360,7 +360,7 @@ func (s *Service) SettingAuthentication(auth *SettingAuthentication) (*EmptyRepl
 	if !s.verifySigs(msg, auth.Signature) {
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "wrong signature or unknown signer")
 	}
-	log.Print("got signature of", s.Storage.Clients)
+	log.Lvl2("got signature of", s.Storage.Clients)
 	if auth.Authentication < 0 || auth.Authentication > 2 {
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "unknown Authentication option")
 	}
@@ -381,9 +381,10 @@ func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
 	}
 
 	switch add.SearchPolicy {
-	case 0:
+	case FollowChain:
+		log.Lvlf2("%s FollowChain %x", s.ServerIdentity(), add.SkipchainID)
 		s.Storage.FollowIDs = append(s.Storage.FollowIDs, add.SkipchainID)
-	case 1:
+	case FollowSearch:
 		// First search if anybody knows that SkipBlockID
 		sis := map[string]*network.ServerIdentity{}
 		for _, sb := range s.Storage.Follow {
@@ -412,7 +413,8 @@ func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
 		if !found {
 			return nil, onet.NewClientErrorCode(ErrorParameterWrong, "didn't find that skipchain-id")
 		}
-	case 2:
+		log.Lvlf2("%s FollowSearch %s %x", s.ServerIdentity(), add.Conode, add.SkipchainID)
+	case FollowLookup:
 		si := network.NewServerIdentity(network.Suite.Point(), network.NewTCPAddress(add.Conode))
 		roster := onet.NewRoster([]*network.ServerIdentity{si})
 		reply, cerr := NewClient().GetUpdateChain(roster, add.SkipchainID)
@@ -424,6 +426,7 @@ func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
 			return nil, onet.NewClientErrorCode(ErrorBlockNotFound, "returned block is not correct")
 		}
 		s.Storage.Follow = append(s.Storage.Follow, last)
+		log.Lvlf2("%s FollowLookup %x", s.ServerIdentity(), add.SkipchainID)
 	default:
 		return nil, onet.NewClientErrorCode(ErrorParameterWrong, "that SearchPolicy is not known.")
 	}
@@ -910,6 +913,8 @@ func (s *Service) blockIsFriendly(sb *SkipBlock) bool {
 					}
 				}
 			} else if len(sb.Roster.List) == 1 || index == 0 {
+				// if there is only one node in the roster or if we're the
+				// root - accept anyway.
 				return true
 			}
 		}

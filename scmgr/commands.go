@@ -40,6 +40,20 @@ func getCommands() []cli.Command {
 					Aliases:   []string{"f"},
 					ArgsUsage: "skipchain-id",
 					Action:    adminFollow,
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "chain, c",
+							Usage: "only allow that chain to add blocks",
+						},
+						cli.BoolFlag{
+							Name:  "search, s",
+							Usage: "search for that chain in known rosters",
+						},
+						cli.BoolFlag{
+							Name:  "lookup, l",
+							Usage: "give ip:port where to find the chain",
+						},
+					},
 				},
 				{
 					Name:      "unfollow",

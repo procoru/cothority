@@ -3,7 +3,7 @@
 DBG_TEST=2
 # Debug-level for app
 DBG_APP=2
-#DBG_SRV=3
+DBG_SRV=2
 
 . $GOPATH/src/gopkg.in/dedis/onet.v1/app/libtest.sh
 
@@ -11,15 +11,15 @@ main(){
 	startTest
 	buildConode github.com/dedis/cothority/skipchain
 	CFG=$BUILDDIR/config.bin
-	# test Restart
-	# test Config
-	# test Create
-	# test Join
-	# test Add
-	# test Index
-	# test Html
-	# test Fetch
-	# test AuthLink
+	test Restart
+	test Config
+	test Create
+	test Join
+	test Add
+	test Index
+	test Html
+	test Fetch
+	test AuthLink
 	test Friend
 	stopTest
 }
@@ -34,11 +34,11 @@ testFriend(){
 	for h in 1 2 3; do
 		host[$h]="localhost:$(( 2000 + 2 * h ))"
 		runSc admin link -priv co$h/private.toml
-		runSc auth ${host[$h]} 1
+		runSc admin auth ${host[$h]} 1
 	done
 	setupGenesis group1.toml
 	testFail runSc skipchain add $ID group12.toml
-	testOK runSc admin follow -trust 0 ${host[2]} $ID
+	testOK runSc admin follow -chain ${host[2]} $ID
 	testOK runSc skipchain add $ID group12.toml
 
 	setupGenesis group1.toml
@@ -47,8 +47,8 @@ testFriend(){
 	testOK runSc admin follow -search ${host[2]} $ID
 	testOK runSc skipchain add $ID group12.toml
 	testFail runSc skipchain add $ID group123.toml
-	testFail runSc admin follow -lookup ${host[3]} ${host[2]} $ID
-	testOK runSc admin follow -lookup ${host[2]} ${host[3]} $ID
+	testFail runSc admin follow -lookup ${host[2]} ${host[3]} $ID
+	testOK runSc admin follow -lookup ${host[3]} ${host[2]} $ID
 	testOK runSc skipchain add $ID group123.toml
 }
 
