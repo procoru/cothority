@@ -130,18 +130,18 @@ func adminAuth(c *cli.Context) error {
 	if len(cfg.Link) == 0 {
 		return errors.New("no link yet")
 	}
-	publicOrIp := c.Args().First()
+	publicOrIP := c.Args().First()
 	// Check if it's a public key and if we can find it
-	other := cfg.Link[publicOrIp]
+	other := cfg.Link[publicOrIP]
 	if other == nil {
 		var err error
-		other, err = findLinkFromAddress(cfg, publicOrIp)
+		other, err = findLinkFromAddress(cfg, publicOrIP)
 		if err != nil {
 			return errors.New("couldn't parse address: " + err.Error())
 		}
 	}
 	if other == nil {
-		return errors.New("didn't find host with ip or public key: " + publicOrIp)
+		return errors.New("didn't find host with ip or public key: " + publicOrIP)
 	}
 	return skipchain.NewClient().SettingAuthentication(other.Conode, other.Private, lvl)
 }
