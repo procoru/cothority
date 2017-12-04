@@ -80,16 +80,16 @@ func (c *Client) StoreSkipBlockSignature(latest *SkipBlock, ro *onet.Roster, d n
 	}
 	host := latest.Roster.Get(0)
 	reply = &StoreSkipBlockReply{}
-	var sig []byte
+	var sig *[]byte
 	if priv != nil {
-		var err error
-		sig, err = schnorr.Sign(Suite, priv, newBlock.CalculateHash())
+		signature, err := schnorr.Sign(Suite, priv, newBlock.CalculateHash())
 		if err != nil {
 			return nil, onet.NewClientErrorCode(ErrorParameterWrong, "couldn't sign block: "+err.Error())
 		}
+		sig = &signature
 	}
 	cerr = c.SendProtobuf(host, &StoreSkipBlock{LatestID: latestID, NewBlock: newBlock,
-		Signature: &sig}, reply)
+		Signature: sig}, reply)
 	if cerr != nil {
 		return nil, cerr
 	}

@@ -9,11 +9,11 @@ import (
 
 	"sync"
 
-	"gopkg.in/dedis/crypto.v0/abstract"
-	"gopkg.in/dedis/crypto.v0/config"
-	"gopkg.in/dedis/onet.v1"
-	"gopkg.in/dedis/onet.v1/log"
-	"gopkg.in/dedis/onet.v1/network"
+	"github.com/dedis/kyber"
+	"github.com/dedis/kyber/util/key"
+	"github.com/dedis/onet"
+	"github.com/dedis/onet/log"
+	"github.com/dedis/onet/network"
 )
 
 func init() {
@@ -21,7 +21,7 @@ func init() {
 }
 
 func TestClient_CreateGenesis(t *testing.T) {
-	l := onet.NewTCPTest()
+	l := onet.NewTCPTest(Suite)
 	_, roster, _ := l.GenTree(3, true)
 	defer l.CloseAll()
 	c := newTestClient(l)
@@ -39,7 +39,7 @@ func TestClient_CreateGenesis(t *testing.T) {
 }
 
 func TestClient_CreateRootControl(t *testing.T) {
-	l := onet.NewTCPTest()
+	l := onet.NewTCPTest(Suite)
 	_, roster, _ := l.GenTree(3, true)
 	defer l.CloseAll()
 	c := newTestClient(l)
@@ -51,15 +51,15 @@ func TestClient_GetUpdateChain(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Long run not good for Travis")
 	}
-	l := onet.NewTCPTest()
-	_, el, _ := l.GenTree(5, true)
+	l := onet.NewTCPTest(Suite)
+	_, ro, _ := l.GenTree(5, true)
 	defer l.CloseAll()
 
 	clients := make(map[int]*Client)
 	for i := range [8]byte{} {
 		clients[i] = newTestClient(l)
 	}
-	_, inter, cerr := clients[0].CreateRootControl(el, el, nil, 1, 1, 1)
+	_, inter, cerr := clients[0].CreateRootControl(ro, ro, nil, 1, 1, 1)
 	log.ErrFatal(cerr)
 
 	wg := sync.WaitGroup{}
@@ -75,12 +75,12 @@ func TestClient_GetUpdateChain(t *testing.T) {
 }
 
 func TestClient_CreateRootInter(t *testing.T) {
-	l := onet.NewTCPTest()
-	_, el, _ := l.GenTree(5, true)
+	l := onet.NewTCPTest(Suite)
+	_, ro, _ := l.GenTree(5, true)
 	defer l.CloseAll()
 
 	c := newTestClient(l)
-	root, inter, cerr := c.CreateRootControl(el, el, nil, 1, 1, 1)
+	root, inter, cerr := c.CreateRootControl(ro, ro, nil, 1, 1, 1)
 	log.ErrFatal(cerr)
 	if root == nil || inter == nil {
 		t.Fatal("Pointers are nil")
@@ -100,28 +100,28 @@ func TestClient_CreateRootInter(t *testing.T) {
 
 func TestClient_StoreSkipBlock(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest()
-	_, el, _ := l.GenTree(nbrHosts, true)
+	l := onet.NewTCPTest(Suite)
+	_, ro, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
 	c := newTestClient(l)
 	log.Lvl1("Creating root and control chain")
-	_, inter, cerr := c.CreateRootControl(el, el, nil, 1, 1, 1)
+	_, inter, cerr := c.CreateRootControl(ro, ro, nil, 1, 1, 1)
 	log.ErrFatal(cerr)
-	el2 := onet.NewRoster(el.List[:nbrHosts-1])
-	log.Lvl1("Proposing roster", el2)
+	ro2 := onet.NewRoster(ro.List[:nbrHosts-1])
+	log.Lvl1("Proposing roster", ro2)
 	var sb1 *StoreSkipBlockReply
-	sb1, cerr = c.StoreSkipBlock(inter, el2, nil)
+	sb1, cerr = c.StoreSkipBlock(inter, ro2, nil)
 	log.ErrFatal(cerr)
 	log.Lvl1("Proposing same roster again")
-	_, cerr = c.StoreSkipBlock(inter, el2, nil)
+	_, cerr = c.StoreSkipBlock(inter, ro2, nil)
 	require.NotNil(t, cerr,
 		"Appending two Blocks to the same last block should fail")
 	log.Lvl1("Proposing following roster")
-	sb1, cerr = c.StoreSkipBlock(sb1.Latest, el2, []byte{1, 2, 3})
+	sb1, cerr = c.StoreSkipBlock(sb1.Latest, ro2, []byte{1, 2, 3})
 	log.ErrFatal(cerr)
 	require.Equal(t, sb1.Latest.Data, []byte{1, 2, 3})
-	sb2, cerr := c.StoreSkipBlock(sb1.Latest, el2, &testData{})
+	sb2, cerr := c.StoreSkipBlock(sb1.Latest, ro2, &testData{})
 	log.ErrFatal(cerr)
 	require.True(t, sb2.Previous.Equal(sb1.Latest),
 		"New previous should be previous latest")
@@ -146,22 +146,22 @@ func TestClient_StoreSkipBlock(t *testing.T) {
 
 func TestClient_GetAllSkipchains(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest()
-	_, el, _ := l.GenTree(nbrHosts, true)
+	l := onet.NewTCPTest(Suite)
+	_, ro, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
 	c := newTestClient(l)
 	log.Lvl1("Creating root and control chain")
-	sb1, cerr := c.CreateGenesis(el, 1, 1, VerificationNone, nil, nil)
+	sb1, cerr := c.CreateGenesis(ro, 1, 1, VerificationNone, nil, nil)
 	log.ErrFatal(cerr)
-	_, cerr = c.StoreSkipBlock(sb1, el, nil)
+	_, cerr = c.StoreSkipBlock(sb1, ro, nil)
 	log.ErrFatal(cerr)
-	sb2, cerr := c.CreateGenesis(el, 1, 1, VerificationNone, nil, nil)
+	sb2, cerr := c.CreateGenesis(ro, 1, 1, VerificationNone, nil, nil)
 	log.ErrFatal(cerr)
 	sb1id := sb1.SkipChainID()
 	sb2id := sb2.SkipChainID()
 
-	sbs, cerr := c.GetAllSkipchains(el.List[0])
+	sbs, cerr := c.GetAllSkipchains(ro.List[0])
 	log.ErrFatal(cerr)
 	require.Equal(t, 2, len(sbs.SkipChains))
 	sbs1id := sbs.SkipChains[0].SkipChainID()
@@ -173,7 +173,7 @@ func TestClient_GetAllSkipchains(t *testing.T) {
 
 func TestClient_GetSingleBlockByIndex(t *testing.T) {
 	nbrHosts := 3
-	l := onet.NewTCPTest()
+	l := onet.NewTCPTest(Suite)
 	_, roster, _ := l.GenTree(nbrHosts, true)
 	defer l.CloseAll()
 
@@ -288,16 +288,16 @@ type linkStruct struct {
 	server   *onet.Server
 	service  *Service
 	si       *network.ServerIdentity
-	servPriv abstract.Scalar
-	priv     abstract.Scalar
-	pub      abstract.Point
+	servPriv kyber.Scalar
+	priv     kyber.Scalar
+	pub      kyber.Point
 	client   *Client
 }
 
 func linked(nbr int) *linkStruct {
-	kp := config.NewKeyPair(network.Suite)
+	kp := key.NewKeyPair(Suite)
 	ls := &linkStruct{
-		local: onet.NewTCPTest(),
+		local: onet.NewTCPTest(Suite),
 		priv:  kp.Secret,
 		pub:   kp.Public,
 	}

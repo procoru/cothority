@@ -772,16 +772,25 @@ func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte) 
 		return nil, errors.New("found empty Roster")
 	case 1:
 		pubs := []kyber.Point{s.ServerIdentity().Public}
-		co := cosi.NewCosi(Suite, root.Private(), pubs)
-		co.CreateCommitment(random.Stream)
-		co.CreateChallenge(msg)
-		co.CreateResponse()
+		r, c := cosi.Commit(Suite, random.Stream)
+		ch, err := cosi.Challenge(Suite, c, s.ServerIdentity().Public, msg)
+		if err != nil {
+			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		}
+		resp, err := cosi.Response(Suite, root.Private(), r, ch)
+		if err != nil {
+			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		}
+		coSig, err := cosi.Sign(Suite, c, resp, nil)
+		if err != nil {
+			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		}
 		sig := &bftcosi.BFTSignature{
 			Msg:        msg,
-			Sig:        co.Signature(),
+			Sig:        coSig,
 			Exceptions: []bftcosi.Exception{},
 		}
-		if cosi.VerifySignature(Suite, pubs, msg, sig.Sig) != nil {
+		if cosi.Verify(Suite, pubs, msg, sig.Sig, nil) != nil {
 			return nil, errors.New("failed in cosi")
 		}
 		return sig, nil
@@ -982,7 +991,7 @@ func newSkipchainService(c *onet.Context) (onet.Service, error) {
 		newBlocks:        make(map[string]bool),
 	}
 	if err := s.tryLoad(); err != nil {
-		return err
+		return nil, err
 	}
 	s.lastSave = time.Now()
 	log.ErrFatal(s.RegisterHandlers(s.StoreSkipBlock, s.GetUpdateChain,
@@ -994,22 +1003,22 @@ func newSkipchainService(c *onet.Context) (onet.Service, error) {
 		s.getBlockReply)
 
 	if err := s.registerVerification(VerifyBase, s.verifyFuncBase); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.registerVerification(VerifyRoot, s.verifyFuncRoot); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.registerVerification(VerifyControl, s.verifyFuncControl); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.registerVerification(VerifyData, s.verifyFuncData); err != nil {
-		return err
+		return nil, err
 	}
 
 	var err error
 	s.propagate, err = messaging.NewPropagationFunc(c, "SkipchainPropagate", s.propagateSkipBlock)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.ProtocolRegister(bftNewBlock, func(n *onet.TreeNodeInstance) (onet.ProtocolInstance, error) {
 		return bftcosi.NewBFTCoSiProtocol(n, s.bftVerifyNewBlock)

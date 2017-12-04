@@ -2,6 +2,7 @@ package skipchain
 
 import (
 	"bytes"
+	"crypto/sha256"
 
 	"fmt"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/dedis/kyber/sign/cosi"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/log"
-	"github.com/dedis/onet/network"
 	"github.com/satori/go.uuid"
 )
 
@@ -198,7 +198,7 @@ type SkipBlockDataEntry struct {
 
 // CalculateHash hashes all fixed fields of the skipblock.
 func (sbf *SkipBlockFix) CalculateHash() SkipBlockID {
-	hash := network.Suite.Hash()
+	hash := sha256.New()
 	for _, i := range []int{sbf.Index, sbf.Height, sbf.MaximumHeight,
 		sbf.BaseHeight} {
 		binary.Write(hash, binary.LittleEndian, i)
@@ -358,7 +358,7 @@ func (bl *BlockLink) VerifySignature(publics []kyber.Point) error {
 	if len(bl.Signature) == 0 {
 		return errors.New("No signature present" + log.Stack())
 	}
-	return cosi.VerifySignature(network.Suite, publics, bl.Hash, bl.Signature)
+	return cosi.Verify(Suite, publics, bl.Hash, bl.Signature, nil)
 }
 
 // SkipBlockMap holds the map to the skipblocks. This is used for verification,

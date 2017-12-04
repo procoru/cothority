@@ -4,16 +4,17 @@ import (
 	"testing"
 
 	"github.com/dedis/cothority/skipchain"
+	"github.com/dedis/kyber/sign/schnorr"
+	"github.com/dedis/onet"
+	"github.com/dedis/onet/log"
+	"github.com/dedis/onet/network"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/dedis/onet.v1"
-	"gopkg.in/dedis/onet.v1/crypto"
-	"gopkg.in/dedis/onet.v1/log"
-	"gopkg.in/dedis/onet.v1/network"
 )
 
 const tsName = "tsName"
 
 var tsID onet.ServiceID
+var tSuite = skipchain.Suite
 
 func init() {
 	var err error
@@ -23,7 +24,7 @@ func init() {
 
 // TestGU tests the GetUpdate message
 func TestGU(t *testing.T) {
-	local := onet.NewLocalTest()
+	local := onet.NewLocalTest(tSuite)
 	defer local.CloseAll()
 	servers, ro, _ := local.GenTree(2, true)
 	tss := local.GetServices(servers, tsID)
@@ -59,7 +60,7 @@ func TestER(t *testing.T) {
 
 func testER(t *testing.T, tsid onet.ServiceID, nbrNodes int) {
 	log.Lvl1("Testing", nbrNodes, "nodes")
-	local := onet.NewLocalTest()
+	local := onet.NewLocalTest(tSuite)
 	defer local.CloseAll()
 	genesis := []byte{1, 2, 3, 4}
 	servers, roster, tree := local.GenBigTree(nbrNodes, nbrNodes, nbrNodes, true)
@@ -80,7 +81,7 @@ func testER(t *testing.T, tsid onet.ServiceID, nbrNodes int) {
 	for _, s := range sigs {
 		_, si := roster.Search(s.SI)
 		require.NotNil(t, si)
-		require.Nil(t, crypto.VerifySchnorr(network.Suite, si.Public, genesis, s.Signature))
+		require.Nil(t, schnorr.Verify(tSuite, si.Public, genesis, s.Signature))
 	}
 
 	if nbrNodes > 2 {
@@ -138,9 +139,9 @@ func (ts *testService) NewProtocol(ti *onet.TreeNodeInstance, conf *onet.Generic
 	return
 }
 
-func newTestService(c *onet.Context) onet.Service {
+func newTestService(c *onet.Context) (onet.Service, error) {
 	s := &testService{
 		ServiceProcessor: onet.NewServiceProcessor(c),
 	}
-	return s
+	return s, nil
 }
