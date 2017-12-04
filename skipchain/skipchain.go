@@ -12,9 +12,9 @@ import (
 	"sync"
 
 	"github.com/dedis/cothority/bftcosi"
+	"github.com/dedis/cothority/cosi/crypto"
 	"github.com/dedis/cothority/messaging"
 	"github.com/dedis/kyber"
-	"github.com/dedis/kyber/sign/cosi"
 	"github.com/dedis/kyber/sign/schnorr"
 	"github.com/dedis/kyber/util/random"
 	"github.com/dedis/onet"
@@ -772,25 +772,30 @@ func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte) 
 		return nil, errors.New("found empty Roster")
 	case 1:
 		pubs := []kyber.Point{s.ServerIdentity().Public}
-		r, c := cosi.Commit(Suite, random.Stream)
-		ch, err := cosi.Challenge(Suite, c, s.ServerIdentity().Public, msg)
-		if err != nil {
-			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
-		}
-		resp, err := cosi.Response(Suite, root.Private(), r, ch)
-		if err != nil {
-			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
-		}
-		coSig, err := cosi.Sign(Suite, c, resp, nil)
-		if err != nil {
-			return nil, errors.New("couldn't create cosi-signature: " + err.Error())
-		}
+		co := crypto.NewCosi(Suite, root.Private(), pubs)
+		co.CreateCommitment(random.Stream)
+		co.CreateChallenge(msg)
+		co.CreateResponse()
+		// This is when using kyber-cosi
+		// r, c := cosi.Commit(Suite, random.Stream)
+		// ch, err := cosi.Challenge(Suite, c, s.ServerIdentity().Public, msg)
+		// if err != nil {
+		// 	return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		// }
+		// resp, err := cosi.Response(Suite, root.Private(), r, ch)
+		// if err != nil {
+		// 	return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		// }
+		// coSig, err := cosi.Sign(Suite, c, resp, nil)
+		// if err != nil {
+		// 	return nil, errors.New("couldn't create cosi-signature: " + err.Error())
+		// }
 		sig := &bftcosi.BFTSignature{
 			Msg:        msg,
-			Sig:        coSig,
+			Sig:        co.Signature(),
 			Exceptions: []bftcosi.Exception{},
 		}
-		if cosi.Verify(Suite, pubs, msg, sig.Sig, nil) != nil {
+		if crypto.VerifySignature(Suite, pubs, msg, sig.Sig) != nil {
 			return nil, errors.New("failed in cosi")
 		}
 		return sig, nil

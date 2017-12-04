@@ -15,8 +15,8 @@ import (
 	"encoding/hex"
 	"strings"
 
+	"github.com/dedis/cothority/cosi/crypto"
 	"github.com/dedis/kyber"
-	"github.com/dedis/kyber/sign/cosi"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/log"
 	"github.com/satori/go.uuid"
@@ -358,7 +358,7 @@ func (bl *BlockLink) VerifySignature(publics []kyber.Point) error {
 	if len(bl.Signature) == 0 {
 		return errors.New("No signature present" + log.Stack())
 	}
-	return cosi.Verify(Suite, publics, bl.Hash, bl.Signature, nil)
+	return crypto.VerifySignature(Suite, publics, bl.Hash, bl.Signature)
 }
 
 // SkipBlockMap holds the map to the skipblocks. This is used for verification,
