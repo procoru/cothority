@@ -102,7 +102,7 @@ func adminLink(c *cli.Context) error {
 		Address: remote.Address,
 		Conode:  si,
 	}
-	cerr := skipchain.NewClient().CreateLinkPrivate(si, pkey, skipchain.Suite.Point().Mul(nil, pkey))
+	cerr := skipchain.NewClient().CreateLinkPrivate(si, pkey, skipchain.Suite.Point().Mul(pkey, nil))
 	if cerr != nil {
 		log.Error(cerr)
 		return cerr
