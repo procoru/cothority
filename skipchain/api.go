@@ -9,6 +9,7 @@ import (
 	"github.com/dedis/onet/network"
 )
 
+// Suite is defined locally until we have a better way to give it per-service.
 var Suite = edwards25519.NewBlakeSHA256Ed25519()
 
 const (
