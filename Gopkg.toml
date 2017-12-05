@@ -60,3 +60,7 @@
 [[constraint]]
   branch = "master"
   name = "gopkg.in/urfave/cli.v1"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/net"
