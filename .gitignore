@@ -1,4 +1,5 @@
 .idea/*
+vendor/
 test_data
 simul/platform/deterlab/build
 simul/platform/deterlab/remote/*
