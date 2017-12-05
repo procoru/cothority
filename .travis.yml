@@ -12,7 +12,9 @@ install:
   - go get github.com/dedis/goveralls
 
 script:
-  - make test
+  - go test ./vendor/github.com/dedis/kyber/...
+  - go test -p=1 ./vendor/github.com/dedis/onet/...
+  - go test -p=1 ./...
 
 notifications:
   email: false
