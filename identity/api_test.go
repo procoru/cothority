@@ -12,6 +12,7 @@ import (
 	"github.com/dedis/kyber/sign/anon"
 	"github.com/dedis/kyber/sign/schnorr"
 	"github.com/dedis/kyber/util/key"
+	"github.com/dedis/kyber/util/random"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/log"
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,7 @@ import (
 )
 
 var tSuite = cothority.Suite
+var rng = random.New()
 
 func NewTestIdentity(cothority *onet.Roster, majority int, owner string, local *onet.LocalTest, kp *key.Pair) *Identity {
 	id := NewIdentity(cothority, majority, owner, kp)
@@ -51,8 +53,8 @@ func TestIdentity_StoreKeys(t *testing.T) {
 	servers := local.GenServers(1)
 	el := local.GenRosterFromHost(servers...)
 	srvc := local.GetServices(servers, identityService)[0].(*Service)
-	keypairAdmin := key.NewKeyPair(tSuite)
-	keypairUser := key.NewKeyPair(tSuite)
+	keypairAdmin := key.NewKeyPair(tSuite, rng)
+	keypairUser := key.NewKeyPair(tSuite, rng)
 
 	popDesc := &service.PopDesc{}
 	popDesc.Name = "test"
@@ -84,7 +86,7 @@ func TestIdentity_StoreKeys(t *testing.T) {
 
 	srvc.auth.adminKeys = append(srvc.auth.adminKeys, keypairAdmin.Public)
 
-	sig, err := schnorr.Sign(tSuite, keypairAdmin.Secret, hash)
+	sig, err := schnorr.Sign(tSuite, rng, keypairAdmin.Secret, hash)
 	log.ErrFatal(err)
 	_, cerr := srvc.StoreKeys(&StoreKeys{PoPAuth, final, nil, sig})
 	require.Nil(t, cerr)
@@ -96,13 +98,13 @@ func TestIdentity_StoreKeys2(t *testing.T) {
 	defer local.CloseAll()
 	servers := local.GenServers(1)
 	srvc := local.GetServices(servers, identityService)[0].(*Service)
-	keypairAdmin := key.NewKeyPair(tSuite)
+	keypairAdmin := key.NewKeyPair(tSuite, rng)
 
 	N := 5
 	pubs := make([]kyber.Point, N)
 	h := tSuite.Hash()
 	for i := 0; i < N; i++ {
-		kp := key.NewKeyPair(tSuite)
+		kp := key.NewKeyPair(tSuite, rng)
 		pubs[i] = kp.Public
 		b, err := kp.Public.MarshalBinary()
 		log.ErrFatal(err)
@@ -112,7 +114,7 @@ func TestIdentity_StoreKeys2(t *testing.T) {
 	hash := h.Sum(nil)
 
 	srvc.auth.adminKeys = append(srvc.auth.adminKeys, keypairAdmin.Public)
-	sig, err := schnorr.Sign(tSuite, keypairAdmin.Secret, hash)
+	sig, err := schnorr.Sign(tSuite, rng, keypairAdmin.Secret, hash)
 	log.ErrFatal(err)
 	_, cerr := srvc.StoreKeys(&StoreKeys{PublicAuth, nil, pubs, sig})
 	require.Nil(t, cerr)
@@ -128,7 +130,7 @@ func TestIdentity_DataNewCheck(t *testing.T) {
 	c1 := createIdentity(l, services, el, "one")
 
 	data2 := c1.Data.Copy()
-	kp2 := key.NewKeyPair(tSuite)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	data2.Device["two"] = &Device{kp2.Public}
 	data2.Storage["two"] = "public2"
 	log.ErrFatal(c1.ProposeSend(data2))
@@ -217,7 +219,7 @@ func TestIdentity_DataNewPropose(t *testing.T) {
 	c1 := createIdentity(l, services, el, "onet")
 
 	data2 := c1.Data.Copy()
-	kp2 := key.NewKeyPair(tSuite)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	data2.Device["two"] = &Device{kp2.Public}
 	log.ErrFatal(c1.ProposeSend(data2))
 
@@ -247,7 +249,7 @@ func TestIdentity_ProposeVote(t *testing.T) {
 
 	c1 := createIdentity(l, services, el, "one1")
 	data2 := c1.Data.Copy()
-	kp2 := key.NewKeyPair(tSuite)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	data2.Device["two2"] = &Device{kp2.Public}
 	data2.Storage["two2"] = "public2"
 	log.ErrFatal(c1.ProposeSend(data2))
@@ -293,8 +295,8 @@ func TestCrashAfterRevocation(t *testing.T) {
 	hosts, el, _ := l.GenTree(5, true)
 	services := l.GetServices(hosts, identityService)
 	defer l.CloseAll()
-	keypair := key.NewKeyPair(tSuite)
-	kp2 := key.NewKeyPair(tSuite)
+	keypair := key.NewKeyPair(tSuite, rng)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	set := anon.Set([]kyber.Point{keypair.Public, kp2.Public})
 	for _, srvc := range services {
 		s := srvc.(*Service)
@@ -351,12 +353,12 @@ func TestVerificationFunction(t *testing.T) {
 	// and send it directly to the skipblock. Without a proper
 	// verification-function, this would pass.
 	data2 := c1.Data.Copy()
-	kp2 := key.NewKeyPair(tSuite)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	data2.Device["two2"] = &Device{kp2.Public}
 	data2.Storage["two2"] = "public2"
 	hash, err := data2.Hash(tSuite)
 	log.ErrFatal(err)
-	sig, err := schnorr.Sign(tSuite, kp2.Secret, hash)
+	sig, err := schnorr.Sign(tSuite, rng, kp2.Secret, hash)
 	log.ErrFatal(err)
 	data2.Votes["one1"] = sig
 	data2.Votes["two2"] = sig
@@ -366,7 +368,7 @@ func TestVerificationFunction(t *testing.T) {
 	require.NotNil(t, cerr, "Skipchain accepted our fake block!")
 
 	// Gibberish signature
-	sig, err = schnorr.Sign(tSuite, c1.Private, hash)
+	sig, err = schnorr.Sign(tSuite, rng, c1.Private, hash)
 	log.ErrFatal(err)
 	// Change one bit in the signature
 	sig[len(sig)-1] ^= 1
@@ -376,7 +378,7 @@ func TestVerificationFunction(t *testing.T) {
 
 	// Unhack: verify that the correct way of doing it works, even if
 	// we bypass the identity.
-	sig, err = schnorr.Sign(tSuite, c1.Private, hash)
+	sig, err = schnorr.Sign(tSuite, rng, c1.Private, hash)
 	log.ErrFatal(err)
 	data2.Votes["one1"] = sig
 	_, cerr = s0.skipchain.StoreSkipBlock(id.SCData, nil, data2)
@@ -394,8 +396,8 @@ func proposeUpVote(i *Identity) {
 }
 
 func createIdentity(l *onet.LocalTest, services []onet.Service, el *onet.Roster, name string) *Identity {
-	keypair := key.NewKeyPair(tSuite)
-	kp2 := key.NewKeyPair(tSuite)
+	keypair := key.NewKeyPair(tSuite, rng)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	set := anon.Set([]kyber.Point{keypair.Public, kp2.Public})
 	for _, srvc := range services {
 		s := srvc.(*Service)

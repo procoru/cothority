@@ -15,9 +15,10 @@ import (
 )
 
 var tSuite = cothority.Suite
+var rng = random.New()
 
 func TestFinalStatement_ToToml(t *testing.T) {
-	pk := key.NewKeyPair(tSuite)
+	pk := key.NewKeyPair(tSuite, rng)
 	si := network.NewServerIdentity(pk.Public, network.NewAddress(network.PlainTCP, "0:2000"))
 	roster := onet.NewRoster([]*network.ServerIdentity{si})
 	fs := &FinalStatement{
@@ -40,7 +41,7 @@ func TestFinalStatement_ToToml(t *testing.T) {
 }
 
 func TestFinalStatement_Verify(t *testing.T) {
-	eddsa := eddsa.NewEdDSA(random.Stream)
+	eddsa := eddsa.NewEdDSA(rng)
 	si := network.NewServerIdentity(eddsa.Public, network.NewAddress(network.PlainTCP, "0:2000"))
 	roster := onet.NewRoster([]*network.ServerIdentity{si})
 	fs := &FinalStatement{

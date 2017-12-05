@@ -10,7 +10,6 @@ import (
 	"github.com/dedis/kyber/sign/anon"
 	"github.com/dedis/kyber/sign/schnorr"
 	"github.com/dedis/kyber/util/key"
-	"github.com/dedis/kyber/util/random"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/log"
 	"github.com/dedis/onet/network"
@@ -102,7 +101,7 @@ type Identity struct {
 func NewIdentity(r *onet.Roster, threshold int, owner string, kp *key.Pair) *Identity {
 	client := onet.NewClient(ServiceName, cothority.Suite)
 	if kp == nil {
-		kp = key.NewKeyPair(cothority.Suite)
+		kp = key.NewKeyPair(cothority.Suite, client.Random)
 	}
 	return &Identity{
 		Client:     client,
@@ -196,7 +195,7 @@ func (i *Identity) popAuth(au *Authenticate, atts []kyber.Point) (*CreateIdentit
 			break
 		}
 	}
-	sigtag := anon.Sign(i.Client.Suite().(anon.Suite), random.Stream, au.Nonce,
+	sigtag := anon.Sign(i.Client.Suite().(anon.Suite), i.Client.Random, au.Nonce,
 		anon.Set(atts), au.Ctx, index, i.Private)
 	cr := &CreateIdentity{}
 	cr.Data = i.Data
@@ -207,7 +206,7 @@ func (i *Identity) popAuth(au *Authenticate, atts []kyber.Point) (*CreateIdentit
 }
 
 func (i *Identity) publicAuth(msg []byte) (*CreateIdentity, error) {
-	sig, err := schnorr.Sign(i.Client.Suite(), i.Private, msg)
+	sig, err := schnorr.Sign(i.Client.Suite(), i.Client.Random, i.Private, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +297,7 @@ func (i *Identity) ProposeVote(accept bool) onet.ClientError {
 	if i.Private == nil {
 		return onet.NewClientErrorCode(ErrorVoteSignature, "no private key is provided")
 	}
-	sig, err := schnorr.Sign(i.Client.Suite(), i.Private, hash)
+	sig, err := schnorr.Sign(i.Client.Suite(), i.Client.Random, i.Private, hash)
 	if err != nil {
 		return onet.NewClientErrorCode(ErrorOnet, err.Error())
 	}

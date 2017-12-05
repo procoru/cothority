@@ -42,7 +42,6 @@ import (
 	"fmt"
 
 	"github.com/dedis/kyber"
-	"github.com/dedis/kyber/util/random"
 )
 
 // CoSi is the struct that implements one round of a CoSi protocol.
@@ -115,6 +114,9 @@ func NewCosi(suite kyber.Group, private kyber.Scalar, publics []kyber.Point) *Co
 // given s stream. It returns the message to pass up in the tree. This is
 // typically called by the leaves.
 func (c *CoSi) CreateCommitment(s cipher.Stream) kyber.Point {
+	if s == nil {
+		panic("s is required")
+	}
 	c.genCommit(s)
 	return c.commitment
 }
@@ -122,6 +124,10 @@ func (c *CoSi) CreateCommitment(s cipher.Stream) kyber.Point {
 // Commit creates the commitment / secret as in CreateCommitment and it also
 // aggregate children commitments from the children's messages.
 func (c *CoSi) Commit(s cipher.Stream, subComms []kyber.Point) kyber.Point {
+	if s == nil {
+		panic("s is required")
+	}
+
 	// generate our own commit
 	c.genCommit(s)
 
@@ -297,11 +303,7 @@ func (c *CoSi) GetResponse() kyber.Scalar {
 // genCommit generates a random scalar vi and computes its individual commit
 // Vi = G^vi
 func (c *CoSi) genCommit(s cipher.Stream) {
-	var stream = s
-	if s == nil {
-		stream = random.Stream
-	}
-	c.random = c.suite.Scalar().Pick(stream)
+	c.random = c.suite.Scalar().Pick(s)
 	c.commitment = c.suite.Point().Mul(c.random, nil)
 	c.aggregateCommitment = c.commitment
 }

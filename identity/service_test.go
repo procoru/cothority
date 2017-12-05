@@ -23,8 +23,8 @@ func TestService_CreateIdentity2(t *testing.T) {
 	_, el, s := local.MakeHELS(5, identityService, tSuite)
 	service := s.(*Service)
 
-	kp := key.NewKeyPair(tSuite)
-	kp2 := key.NewKeyPair(tSuite)
+	kp := key.NewKeyPair(tSuite, rng)
+	kp2 := key.NewKeyPair(tSuite, rng)
 	set := anon.Set([]kyber.Point{kp.Public, kp2.Public})
 	service.auth.sets = append(service.auth.sets, set)
 
@@ -33,11 +33,11 @@ func TestService_CreateIdentity2(t *testing.T) {
 	ci.Type = PoPAuth
 	ci.Data = il
 	ci.Roster = el
-	ci.Nonce = random.Bytes(nonceSize, random.Stream)
+	ci.Nonce = random.Bytes(nonceSize, rng)
 	service.auth.nonces[string(ci.Nonce)] = struct{}{}
 	ctx := []byte(ServiceName + service.ServerIdentity().String())
 
-	ci.Sig = anon.Sign(tSuite.(anon.Suite), random.Stream, ci.Nonce,
+	ci.Sig = anon.Sign(tSuite.(anon.Suite), rng, ci.Nonce,
 		set, ctx, 0, kp.Secret)
 	msg, cerr := service.CreateIdentity(ci)
 	log.ErrFatal(cerr)
@@ -55,7 +55,7 @@ func TestService_CreateIdentity3(t *testing.T) {
 	_, el, s := local.MakeHELS(5, identityService, tSuite)
 	service := s.(*Service)
 
-	kp := key.NewKeyPair(tSuite)
+	kp := key.NewKeyPair(tSuite, rng)
 	service.auth.keys = append(service.auth.keys, kp.Public)
 
 	il := NewData(50, kp.Public, "one")
@@ -64,10 +64,10 @@ func TestService_CreateIdentity3(t *testing.T) {
 	ci.Data = il
 	ci.Roster = el
 	ci.Public = kp.Public
-	ci.Nonce = random.Bytes(nonceSize, random.Stream)
+	ci.Nonce = random.Bytes(nonceSize, rng)
 	service.auth.nonces[string(ci.Nonce)] = struct{}{}
 	var err error
-	ssig, err := schnorr.Sign(tSuite, kp.Secret, ci.Nonce)
+	ssig, err := schnorr.Sign(tSuite, rng, kp.Secret, ci.Nonce)
 	ci.SchnSig = &ssig
 	log.ErrFatal(err)
 	msg, cerr := service.CreateIdentity(ci)

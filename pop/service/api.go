@@ -65,7 +65,7 @@ func (c *Client) PinRequest(dst network.Address, pin string, pub kyber.Point) on
 // StoreConfig sends the configuration to the conode for later usage.
 func (c *Client) StoreConfig(dst network.Address, p *PopDesc, priv kyber.Scalar) onet.ClientError {
 	si := &network.ServerIdentity{Address: dst}
-	sg, e := schnorr.Sign(cothority.Suite, priv, p.Hash())
+	sg, e := schnorr.Sign(cothority.Suite, c.Random, priv, p.Hash())
 	if e != nil {
 		return onet.NewClientError(e)
 	}
@@ -105,7 +105,7 @@ func (c *Client) Finalize(dst network.Address, p *PopDesc, attendees []kyber.Poi
 		return nil, onet.NewClientError(err)
 	}
 	res := &finalizeResponse{}
-	sg, err := schnorr.Sign(cothority.Suite, priv, hash)
+	sg, err := schnorr.Sign(cothority.Suite, c.Random, priv, hash)
 	if err != nil {
 		return nil, onet.NewClientError(err)
 	}
@@ -125,7 +125,7 @@ func (c *Client) Merge(dst network.Address, p *PopDesc, priv kyber.Scalar) (
 	si := &network.ServerIdentity{Address: dst}
 	res := &finalizeResponse{}
 	hash := p.Hash()
-	sg, err := schnorr.Sign(cothority.Suite, priv, hash)
+	sg, err := schnorr.Sign(cothority.Suite, c.Random, priv, hash)
 	if err != nil {
 		return nil, onet.NewClientError(err)
 	}

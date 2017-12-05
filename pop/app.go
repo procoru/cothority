@@ -177,7 +177,7 @@ func orgConfig(c *cli.Context) error {
 	log.Lvlf2("Hash of config: %s", hash)
 	log.ErrFatal(client.StoreConfig(cfg.Address, desc, cfg.OrgPrivate))
 	if val, ok := cfg.Parties[hash]; !ok {
-		kp := key.NewKeyPair(cothority.Suite)
+		kp := key.NewKeyPair(cothority.Suite, random.New())
 		cfg.Parties[hash] = &PartyConfig{
 			Index: -1,
 			Final: &service.FinalStatement{
@@ -311,7 +311,7 @@ func orgMerge(c *cli.Context) error {
 
 // creates a new private/public pair
 func attCreate(c *cli.Context) error {
-	kp := key.NewKeyPair(cothority.Suite)
+	kp := key.NewKeyPair(cothority.Suite, random.New())
 	secStr, err := encoding.ScalarToString64(nil, kp.Secret)
 	if err != nil {
 		return err
@@ -439,7 +439,7 @@ func attSign(c *cli.Context) error {
 	msg := []byte(c.Args().First())
 	ctx := []byte(c.Args().Get(1))
 	Set := anon.Set(party.Final.Attendees)
-	sigtag := anon.Sign(cothority.Suite.(anon.Suite), random.Stream, msg,
+	sigtag := anon.Sign(cothority.Suite.(anon.Suite), random.New(), msg,
 		Set, ctx, party.Index, party.Private)
 	sig := sigtag[:len(sigtag)-service.SIGSIZE/2]
 	tag := sigtag[len(sigtag)-service.SIGSIZE/2:]
@@ -520,7 +520,7 @@ func getConfigClient(c *cli.Context) (*Config, *service.Client) {
 func newConfig(fileConfig string) (*Config, error) {
 	name := app.TildeToHome(fileConfig)
 	if _, err := os.Stat(name); err != nil {
-		kp := key.NewKeyPair(cothority.Suite)
+		kp := key.NewKeyPair(cothority.Suite, random.New())
 		return &Config{
 			OrgPublic:  kp.Public,
 			OrgPrivate: kp.Secret,

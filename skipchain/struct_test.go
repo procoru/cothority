@@ -151,7 +151,7 @@ func sign(msg SkipBlockID, servers []*onet.Server, l *onet.LocalTest) (*bftcosi.
 		aggScalar.Add(aggScalar, l.GetPrivate(s))
 		aggPoint.Add(aggPoint, s.ServerIdentity.Public)
 	}
-	rand := tSuite.Scalar().Pick(random.Stream)
+	rand := tSuite.Scalar().Pick(random.New())
 	comm := tSuite.Point().Mul(rand, nil)
 	sigC, err := comm.MarshalBinary()
 	if err != nil {

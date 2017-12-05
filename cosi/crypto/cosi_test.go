@@ -9,10 +9,12 @@ import (
 	"github.com/dedis/kyber"
 	"github.com/dedis/kyber/group"
 	"github.com/dedis/kyber/util/key"
+	"github.com/dedis/kyber/util/random"
 	"github.com/stretchr/testify/assert"
 )
 
 var testSuite = group.MustSuite("Ed25519")
+var rng = random.New()
 
 // TestCosiCommitment test if the commitment generation is correct
 func TestCosiCommitment(t *testing.T) {
@@ -21,7 +23,7 @@ func TestCosiCommitment(t *testing.T) {
 	// gen commitments from children
 	commitments := genCommitments(cosis[1:])
 	root := cosis[0]
-	root.Commit(nil, commitments)
+	root.Commit(rng, commitments)
 	// compute the aggregate commitment ourself...
 	aggCommit := testSuite.Point().Null()
 	// add commitment of children
@@ -152,7 +154,7 @@ func genKeyPair(nb int) ([]*key.Pair, []kyber.Point) {
 	var kps []*key.Pair
 	var publics []kyber.Point
 	for i := 0; i < nb; i++ {
-		kp := key.NewKeyPair(testSuite)
+		kp := key.NewKeyPair(testSuite, rng)
 		kps = append(kps, kp)
 		publics = append(publics, kp.Public)
 	}
@@ -185,7 +187,7 @@ func genCosisFailing(nb int, failing int) (cosis []*CoSi, allPublics []kyber.Poi
 func genCommitments(cosis []*CoSi) []kyber.Point {
 	commitments := make([]kyber.Point, len(cosis))
 	for i := range cosis {
-		commitments[i] = cosis[i].CreateCommitment(nil)
+		commitments[i] = cosis[i].CreateCommitment(rng)
 	}
 	return commitments
 }
@@ -195,7 +197,7 @@ func genCommitments(cosis []*CoSi) []kyber.Point {
 func genPostCommitmentPhaseCosi(cosis []*CoSi) {
 	commitments := genCommitments(cosis[1:])
 	root := cosis[0]
-	root.Commit(nil, commitments)
+	root.Commit(rng, commitments)
 }
 
 func genPostChallengePhaseCosi(cosis []*CoSi, msg []byte) {

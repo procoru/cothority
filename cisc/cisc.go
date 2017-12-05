@@ -24,6 +24,7 @@ import (
 	"github.com/dedis/kyber/sign/schnorr"
 	"github.com/dedis/kyber/util/encoding"
 	"github.com/dedis/kyber/util/key"
+	"github.com/dedis/kyber/util/random"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/app"
 	"github.com/dedis/onet/log"
@@ -99,7 +100,7 @@ func adminLink(c *cli.Context) error {
 	if pin != "" {
 		kp, found = cfg.KeyPairs[string(addr)]
 		if !found {
-			ckp := key.NewKeyPair(cothority.Suite)
+			ckp := key.NewKeyPair(cothority.Suite, random.New())
 			kp = &keyPair{}
 			kp.Public = ckp.Public
 			kp.Private = ckp.Secret
@@ -160,7 +161,7 @@ func adminStore(c *cli.Context) error {
 		log.Error("error while Hashing")
 		return err
 	}
-	sig, err := schnorr.Sign(cothority.Suite, kp.Private, hash)
+	sig, err := schnorr.Sign(cothority.Suite, client.Random, kp.Private, hash)
 	if err != nil {
 		return err
 	}
@@ -230,7 +231,7 @@ func adminAdd(c *cli.Context) error {
 	}
 	hash := h.Sum(nil)
 
-	sig, err := schnorr.Sign(cothority.Suite, kp.Private, hash)
+	sig, err := schnorr.Sign(cothority.Suite, client.Random, kp.Private, hash)
 	if err != nil {
 		return err
 	}
@@ -248,7 +249,7 @@ func adminAdd(c *cli.Context) error {
  */
 
 func idKeyPair(c *cli.Context) error {
-	kp := key.NewKeyPair(cothority.Suite)
+	kp := key.NewKeyPair(cothority.Suite, random.New())
 
 	secStr, err := encoding.ScalarToString64(nil, kp.Secret)
 	if err != nil {

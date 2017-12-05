@@ -65,7 +65,7 @@ func (p *Protocol) Start() error {
 func (p *Protocol) HandleSignRequest(msg structMessage) error {
 	p.Message = msg.Msg
 	p.VerifySignature = msg.VerifySignature
-	signature, err := schnorr.Sign(p.Suite(), p.Private(), p.Message)
+	signature, err := schnorr.Sign(p.Suite(), p.Random, p.Private(), p.Message)
 	if err != nil {
 		return err
 	}
